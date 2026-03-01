@@ -24,6 +24,10 @@ namespace Achieve.UniCodex
         private static readonly Regex MarkdownItalicUnderscoreRegex = new Regex("(?<!_)_(?!_)(.+?)(?<!_)_(?!_)", RegexOptions.Compiled);
         private static readonly Regex MarkdownCodeRegex = new Regex("`([^`\\n]+)`", RegexOptions.Compiled);
         private static readonly Regex MentionPathRegex = new Regex("@([^\\s@]+)", RegexOptions.Compiled);
+        private static readonly Queue<DeferredRunResult> DeferredRunResults = new Queue<DeferredRunResult>();
+        private static readonly object DeferredRunLock = new object();
+        private static readonly object ActiveRunCountLock = new object();
+        private static int ActiveRunCount;
 
         private readonly List<ChatMessage> _messages = new List<ChatMessage>();
         private readonly List<ChatSessionInfo> _chatSessions = new List<ChatSessionInfo>();
@@ -141,6 +145,16 @@ namespace Achieve.UniCodex
             LoadChatHistory();
             MarkProjectFileIndexDirty();
 
+            if (HasActiveRuns())
+            {
+                _isBusy = true;
+                _statusText = "Codex is thinking...";
+                CodexToolbarShortcut.SetBusyState();
+            }
+
+            ApplyDeferredRunResults();
+            SynchronizeBusyState();
+
             AssemblyReloadEvents.beforeAssemblyReload -= ReleaseAutoRefreshLock;
             AssemblyReloadEvents.beforeAssemblyReload += ReleaseAutoRefreshLock;
 
@@ -171,7 +185,9 @@ namespace Achieve.UniCodex
         public void CreateGUI()
         {
             RebuildUI();
-            RefreshEnvironmentState();
+            SynchronizeBusyState();
+            EnsurePendingAssistantForActiveRun();
+            RefreshEnvironmentState(true);
         }
 
         private void RebuildUI()
@@ -1635,12 +1651,20 @@ namespace Achieve.UniCodex
 
         private void RefreshEnvironmentState()
         {
-            if (_isBusy)
+            RefreshEnvironmentState(false);
+        }
+
+        private void RefreshEnvironmentState(bool allowWhileBusy)
+        {
+            if (_isBusy && !allowWhileBusy)
             {
                 return;
             }
 
-            SetStatus("Checking codex and login status...");
+            if (!_isBusy)
+            {
+                SetStatus("Checking codex and login status...");
+            }
             Task.Run(() =>
             {
                 var service = CreateCliService();
@@ -1671,7 +1695,10 @@ namespace Achieve.UniCodex
                     }
 
                     UpdateEnvironmentUI();
-                    SetStatus("Ready");
+                    if (!_isBusy)
+                    {
+                        SetStatus("Ready");
+                    }
                 };
             });
         }
@@ -1878,6 +1905,7 @@ namespace Achieve.UniCodex
             var diffPreviewThisTurn = _chatMode == ChatMode.Build && _buildDiffPreviewMode;
             var prompt = diffPreviewThisTurn ? BuildDiffPreviewPrompt(text) : BuildPrompt(text);
             SetBusy(true, diffPreviewThisTurn ? "Codex is generating diff preview..." : "Codex is thinking...");
+            IncrementActiveRuns();
 
             Task.Run(() =>
             {
@@ -1888,8 +1916,9 @@ namespace Achieve.UniCodex
                 var result = task.IsFaulted
                     ? CodexRunResult.FromError(task.Exception?.GetBaseException().Message ?? "Unknown execution error")
                     : task.Result;
+                DecrementActiveRuns();
 
-                EditorApplication.delayCall += () => HandleCodexResult(result, diffPreviewThisTurn);
+                EditorApplication.delayCall += () => DispatchRunResult(result, diffPreviewThisTurn);
             });
         }
 
@@ -1926,6 +1955,23 @@ namespace Achieve.UniCodex
                 targetedFiles,
                 MaxTargetedFileChars));
             return sb.ToString();
+        }
+
+        private void EnsurePendingAssistantForActiveRun()
+        {
+            if (!HasActiveRuns())
+            {
+                return;
+            }
+
+            var loading = FindLatestLoadingMessage();
+            if (loading != null)
+            {
+                StartPendingAssistantMessage(loading);
+                return;
+            }
+
+            StartPendingAssistantMessage(null);
         }
 
         private string BuildDiffPreviewPrompt(string userText)
@@ -1987,6 +2033,53 @@ namespace Achieve.UniCodex
             SetBusy(false, "Codex execution failed");
         }
 
+        private static void DispatchRunResult(CodexRunResult result, bool diffPreviewTurn)
+        {
+            var window = TryGetAnyChatWindow();
+            if (window != null)
+            {
+                window.HandleCodexResult(result, diffPreviewTurn);
+                return;
+            }
+
+            lock (DeferredRunLock)
+            {
+                DeferredRunResults.Enqueue(new DeferredRunResult
+                {
+                    Result = result,
+                    DiffPreviewTurn = diffPreviewTurn
+                });
+            }
+
+            if (HasActiveRuns())
+            {
+                CodexToolbarShortcut.SetBusyState();
+            }
+            else
+            {
+                CodexToolbarShortcut.SetCompleteState();
+            }
+        }
+
+        private void ApplyDeferredRunResults()
+        {
+            while (true)
+            {
+                DeferredRunResult pending;
+                lock (DeferredRunLock)
+                {
+                    if (DeferredRunResults.Count <= 0)
+                    {
+                        break;
+                    }
+
+                    pending = DeferredRunResults.Dequeue();
+                }
+
+                HandleCodexResult(pending.Result, pending.DiffPreviewTurn);
+            }
+        }
+
         private void ShowDiffPreviewWindow(string responseText)
         {
             if (string.IsNullOrWhiteSpace(responseText))
@@ -2038,6 +2131,12 @@ namespace Achieve.UniCodex
 
         internal static Func<string, string, Task<CodexRunResult>> TryGetDiffRefineHandler()
         {
+            var window = TryGetAnyChatWindow();
+            return window == null ? null : window.RequestDiffRefinementFromPreview;
+        }
+
+        private static CodexChatWindow TryGetAnyChatWindow()
+        {
             var windows = Resources.FindObjectsOfTypeAll<CodexChatWindow>();
             if (windows == null || windows.Length == 0)
             {
@@ -2047,15 +2146,48 @@ namespace Achieve.UniCodex
             for (var i = 0; i < windows.Length; i++)
             {
                 var window = windows[i];
-                if (window == null)
+                if (window != null)
                 {
-                    continue;
+                    return window;
                 }
-
-                return window.RequestDiffRefinementFromPreview;
             }
 
             return null;
+        }
+
+        private static void IncrementActiveRuns()
+        {
+            lock (ActiveRunCountLock)
+            {
+                ActiveRunCount++;
+            }
+        }
+
+        private static void DecrementActiveRuns()
+        {
+            lock (ActiveRunCountLock)
+            {
+                if (ActiveRunCount > 0)
+                {
+                    ActiveRunCount--;
+                }
+            }
+        }
+
+        private static bool HasActiveRuns()
+        {
+            lock (ActiveRunCountLock)
+            {
+                return ActiveRunCount > 0;
+            }
+        }
+
+        private static bool HasDeferredRunResults()
+        {
+            lock (DeferredRunLock)
+            {
+                return DeferredRunResults.Count > 0;
+            }
         }
 
         private string BuildDiffRefinementPrompt(string currentDiff, string refineRequest)
@@ -2469,7 +2601,7 @@ namespace Achieve.UniCodex
             return message;
         }
 
-        private void StartPendingAssistantMessage()
+        private void StartPendingAssistantMessage(ChatMessage existingMessage = null)
         {
             StopPendingAssistantAnimation();
             lock (_progressUpdateLock)
@@ -2482,7 +2614,20 @@ namespace Achieve.UniCodex
             _pendingProgressText = "Preparing request";
             _pendingProgressLines.Clear();
             _pendingProgressLines.Add(_pendingProgressText);
-            _pendingAssistantMessage = AddMessage(ChatRole.Assistant, BuildThinkingText(_pendingDotCount, _pendingProgressLines), null, true);
+            if (existingMessage != null)
+            {
+                existingMessage.IsLoading = true;
+                existingMessage.Role = ChatRole.Assistant;
+                existingMessage.Text = BuildThinkingText(_pendingDotCount, _pendingProgressLines);
+                existingMessage.Time = DateTime.Now.ToString("HH:mm:ss");
+                existingMessage.TokenSummary = null;
+                _pendingAssistantMessage = existingMessage;
+                RefreshChatUI();
+            }
+            else
+            {
+                _pendingAssistantMessage = AddMessage(ChatRole.Assistant, BuildThinkingText(_pendingDotCount, _pendingProgressLines), null, true);
+            }
 
             _pendingAnimationItem = rootVisualElement.schedule.Execute(() =>
             {
@@ -2597,8 +2742,12 @@ namespace Achieve.UniCodex
 
             if (_pendingAssistantMessage == null)
             {
-                AddMessage(role, text, tokenSummary);
-                return;
+                _pendingAssistantMessage = FindLatestLoadingMessage();
+                if (_pendingAssistantMessage == null)
+                {
+                    AddMessage(role, text, tokenSummary);
+                    return;
+                }
             }
 
             _pendingAssistantMessage.IsLoading = false;
@@ -2610,6 +2759,50 @@ namespace Achieve.UniCodex
             SaveChatHistory();
             RefreshChatUI();
             ScrollToBottom();
+        }
+
+        private ChatMessage FindLatestLoadingMessage()
+        {
+            for (var i = _messages.Count - 1; i >= 0; i--)
+            {
+                var message = _messages[i];
+                if (message != null && message.IsLoading)
+                {
+                    return message;
+                }
+            }
+
+            return null;
+        }
+
+        private void SynchronizeBusyState()
+        {
+            if (!_isBusy)
+            {
+                return;
+            }
+
+            if (HasActiveRuns() || HasDeferredRunResults())
+            {
+                return;
+            }
+
+            var loading = FindLatestLoadingMessage();
+            if (loading != null)
+            {
+                loading.IsLoading = false;
+                loading.Role = ChatRole.System;
+                loading.Time = DateTime.Now.ToString("HH:mm:ss");
+                loading.TokenSummary = null;
+                loading.Text = "Previous request was interrupted. Please send again.";
+                SaveChatHistory();
+            }
+
+            _pendingAssistantMessage = null;
+            StopPendingAssistantAnimation();
+            _isBusy = false;
+            CodexToolbarShortcut.SetCompleteState();
+            SetStatus("Ready");
         }
 
         private static string BuildThinkingText(int dotCount, List<string> progressLines)
@@ -3236,7 +3429,24 @@ namespace Achieve.UniCodex
 
         private void SetBusy(bool busy, string status)
         {
+            var wasBusy = _isBusy;
             _isBusy = busy;
+            if (busy)
+            {
+                CodexToolbarShortcut.SetBusyState();
+            }
+            else if (wasBusy)
+            {
+                if (HasActiveRuns())
+                {
+                    CodexToolbarShortcut.SetBusyState();
+                }
+                else
+                {
+                    CodexToolbarShortcut.SetCompleteState();
+                }
+            }
+
             SetStatus(status);
         }
 
@@ -3825,6 +4035,12 @@ namespace Achieve.UniCodex
             public string Text;
             public string Time;
             public string TokenSummary;
+        }
+
+        private sealed class DeferredRunResult
+        {
+            public CodexRunResult Result;
+            public bool DiffPreviewTurn;
         }
 
         private sealed class ChatMessage
