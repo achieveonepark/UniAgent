@@ -16,7 +16,14 @@ namespace Achieve.UniCodex
         private const string ToolbarTypeName = "UnityEditor.Toolbar, UnityEditor";
         private const string GUIViewTypeName = "UnityEditor.GUIView, UnityEditor";
         private const string ShortcutButtonName = "UniCodexToolbarShortcut";
+        private const string StatusDotName = "UniCodexToolbarStatusDot";
         private const double PollIntervalSeconds = 0.8d;
+        private enum ShortcutStatus
+        {
+            Ready,
+            Busy,
+            Complete
+        }
         private static readonly string[] ZoneNameCandidates =
         {
             "ToolbarZonePlayModes",
@@ -32,7 +39,7 @@ namespace Achieve.UniCodex
         private static double _nextPollAt;
         private static UnityEngine.Object _cachedToolbar;
         private static int _cachedToolbarId;
-        private static Texture2D _iconTexture;
+        private static ShortcutStatus _shortcutStatus = ShortcutStatus.Ready;
 
         static CodexToolbarShortcut()
         {
@@ -45,6 +52,33 @@ namespace Achieve.UniCodex
         {
             _cachedToolbar = null;
             _cachedToolbarId = 0;
+            _nextPollAt = 0d;
+            EnsureShortcutInstalled();
+        }
+
+        internal static void SetReadyState()
+        {
+            SetShortcutStatus(ShortcutStatus.Ready);
+        }
+
+        internal static void SetBusyState()
+        {
+            SetShortcutStatus(ShortcutStatus.Busy);
+        }
+
+        internal static void SetCompleteState()
+        {
+            SetShortcutStatus(ShortcutStatus.Complete);
+        }
+
+        private static void SetShortcutStatus(ShortcutStatus status)
+        {
+            if (_shortcutStatus == status)
+            {
+                return;
+            }
+
+            _shortcutStatus = status;
             _nextPollAt = 0d;
             EnsureShortcutInstalled();
         }
@@ -68,12 +102,14 @@ namespace Achieve.UniCodex
             if (existing != null)
             {
                 SyncButtonSizeWithPlayControl(playZone, existing);
+                ApplyShortcutVisual(existing);
                 return;
             }
 
             var created = CreateShortcutButton();
             playZone.Insert(0, created);
             SyncButtonSizeWithPlayControl(playZone, created);
+            ApplyShortcutVisual(created);
         }
 
         private static VisualElement TryGetPlayModeZone()
@@ -226,7 +262,7 @@ namespace Achieve.UniCodex
 
         private static Button CreateShortcutButton()
         {
-            var button = new Button(CodexChatWindow.OpenWindow)
+            var button = new Button(OnShortcutButtonClicked)
             {
                 name = ShortcutButtonName,
                 tooltip = "Open Codex Chat"
@@ -247,25 +283,28 @@ namespace Achieve.UniCodex
             button.style.alignSelf = Align.Center;
             button.style.flexGrow = 0f;
             button.style.flexShrink = 0f;
+            button.style.backgroundColor = new Color(0.18f, 0.19f, 0.22f, 1f);
 
-            var icon = GetIconTexture();
-            if (icon != null)
+            var dot = new VisualElement
             {
-                var image = new Image
-                {
-                    image = icon,
-                    scaleMode = ScaleMode.ScaleToFit,
-                    pickingMode = PickingMode.Ignore
-                };
-                image.style.width = 12f;
-                image.style.height = 12f;
-                image.style.unityBackgroundImageTintColor = new Color(0.86f, 0.86f, 0.86f, 1f);
-                button.Add(image);
-            }
-            else
-            {
-                button.text = "C";
-            }
+                name = StatusDotName
+            };
+            dot.style.width = 9f;
+            dot.style.height = 9f;
+            dot.style.borderTopLeftRadius = 4.5f;
+            dot.style.borderTopRightRadius = 4.5f;
+            dot.style.borderBottomLeftRadius = 4.5f;
+            dot.style.borderBottomRightRadius = 4.5f;
+            dot.style.borderTopWidth = 1f;
+            dot.style.borderBottomWidth = 1f;
+            dot.style.borderLeftWidth = 1f;
+            dot.style.borderRightWidth = 1f;
+            dot.style.borderTopColor = new Color(0.12f, 0.12f, 0.12f, 1f);
+            dot.style.borderBottomColor = new Color(0.12f, 0.12f, 0.12f, 1f);
+            dot.style.borderLeftColor = new Color(0.12f, 0.12f, 0.12f, 1f);
+            dot.style.borderRightColor = new Color(0.12f, 0.12f, 0.12f, 1f);
+            dot.pickingMode = PickingMode.Ignore;
+            button.Add(dot);
 
             return button;
         }
@@ -353,32 +392,56 @@ namespace Achieve.UniCodex
             return null;
         }
 
-        private static Texture2D GetIconTexture()
+        private static void OnShortcutButtonClicked()
         {
-            if (_iconTexture != null)
+            if (_shortcutStatus == ShortcutStatus.Complete)
             {
-                return _iconTexture;
+                SetReadyState();
             }
 
-            var iconNames = new[]
-            {
-                "d_SettingsIcon",
-                "SettingsIcon",
-                "d_console.infoicon.sml",
-                "console.infoicon.sml"
-            };
+            CodexChatWindow.OpenWindow();
+        }
 
-            for (var i = 0; i < iconNames.Length; i++)
+        private static void ApplyShortcutVisual(Button button)
+        {
+            if (button == null)
             {
-                var content = EditorGUIUtility.IconContent(iconNames[i]);
-                if (content?.image is Texture2D texture)
-                {
-                    _iconTexture = texture;
-                    return _iconTexture;
-                }
+                return;
             }
 
-            return null;
+            var dot = button.Q<VisualElement>(StatusDotName);
+            if (dot != null)
+            {
+                dot.style.backgroundColor = GetStatusColor(_shortcutStatus);
+            }
+
+            button.tooltip = $"Open Codex Chat ({GetStatusLabel(_shortcutStatus)})";
+        }
+
+        private static Color GetStatusColor(ShortcutStatus status)
+        {
+            switch (status)
+            {
+                case ShortcutStatus.Busy:
+                    return new Color(0.86f, 0.26f, 0.26f, 1f);
+                case ShortcutStatus.Complete:
+                    return new Color(0.24f, 0.73f, 0.33f, 1f);
+                default:
+                    return new Color(0.17f, 0.56f, 0.94f, 1f);
+            }
+        }
+
+        private static string GetStatusLabel(ShortcutStatus status)
+        {
+            switch (status)
+            {
+                case ShortcutStatus.Busy:
+                    return "Busy";
+                case ShortcutStatus.Complete:
+                    return "Complete";
+                default:
+                    return "Ready";
+            }
         }
     }
 }

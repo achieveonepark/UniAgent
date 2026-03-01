@@ -486,6 +486,7 @@ namespace Achieve.UniCodex
             }
 
             sb.Append("--json ");
+            sb.Append("--skip-git-repo-check ");
             sb.Append("--output-last-message ").Append(EscapeArg(outputFile)).Append(' ');
 
             if (request.FullAuto)
