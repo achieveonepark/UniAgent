@@ -1,0 +1,10 @@
+{
+  "name": "Achieve.UniAgent.Editor",
+  "rootNamespace": "Achieve.UniAgent.Editor",
+  "references": [
+    "Achieve.UniAgent"
+  ],
+  "includePlatforms": [
+    "Editor"
+  ]
+}

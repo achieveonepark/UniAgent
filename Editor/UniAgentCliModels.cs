@@ -1,9 +1,21 @@
-namespace Achieve.UniCodex.Editor
+namespace Achieve.UniAgent.Editor
 {
+    /// <summary>
+    /// 채팅에서 사용할 CLI 백엔드 공급자입니다.
+    /// </summary>
+    internal enum CliProvider
+    {
+        /// <summary>OpenAI Codex CLI (<c>codex</c>)를 사용합니다.</summary>
+        Codex,
+        /// <summary>Claude Code CLI (<c>claude</c>)를 사용합니다.</summary>
+        ClaudeCode
+    }
+
+
     /// <summary>
     /// CLI 설치/로그인 상태를 담는 환경 캐시 모델입니다.
     /// </summary>
-    internal sealed class UniCodexEnvironmentState
+    internal sealed class UniAgentEnvironmentState
     {
         /// <summary>Codex CLI 실행 파일 사용 가능 여부입니다.</summary>
         public bool Installed;
@@ -20,7 +32,7 @@ namespace Achieve.UniCodex.Editor
     /// <summary>
     /// 일반 명령 실행 결과 모델입니다.
     /// </summary>
-    internal sealed class UniCodexCommandResult
+    internal sealed class UniAgentCommandResult
     {
         /// <summary>명령 성공 여부입니다.</summary>
         public bool Success;
@@ -31,7 +43,7 @@ namespace Achieve.UniCodex.Editor
     /// <summary>
     /// <c>codex exec</c> 호출 입력 모델입니다.
     /// </summary>
-    internal sealed class UniCodexRunRequest
+    internal sealed class UniAgentRunRequest
     {
         /// <summary>CLI 실행 경로입니다.</summary>
         public string CliPath;
@@ -58,7 +70,7 @@ namespace Achieve.UniCodex.Editor
     /// <summary>
     /// <c>codex exec</c> 결과 파싱 모델입니다.
     /// </summary>
-    internal sealed class UniCodexRunResult
+    internal sealed class UniAgentRunResult
     {
         /// <summary>실행 성공 여부입니다.</summary>
         public bool Success;
@@ -76,9 +88,9 @@ namespace Achieve.UniCodex.Editor
         /// <summary>
         /// 지정한 오류 메시지로 실패 결과를 생성합니다.
         /// </summary>
-        public static UniCodexRunResult FromError(string message)
+        public static UniAgentRunResult FromError(string message)
         {
-            return new UniCodexRunResult
+            return new UniAgentRunResult
             {
                 Success = false,
                 Message = message,

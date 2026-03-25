@@ -1,18 +1,18 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
-using Achieve.UniCodex;
+using Achieve.UniAgent;
 
-namespace Achieve.UniCodex.Editor
+namespace Achieve.UniAgent.Editor
 {
     /// <summary>
-    /// 에디터의 codex CLI 구현을 UniCodex 런타임 Client 계약으로 노출하는 어댑터입니다.
+    /// 에디터의 codex CLI 구현을 UniAgent 런타임 Client 계약으로 노출하는 어댑터입니다.
     /// </summary>
-    internal sealed class UniCodexEditorCliClientAdapter : UniCodex.IClient
+    internal sealed class UniAgentEditorCliClientAdapter : UniAgent.IClient
     {
-        private readonly Func<UniCodexCliService> _serviceFactory;
+        private readonly Func<UniAgentCliService> _serviceFactory;
         private readonly object _authLock = new object();
-        private UniCodexAuthState _authState = new UniCodexAuthState
+        private UniAgentAuthState _authState = new UniAgentAuthState
         {
             IsLoggedIn = false,
             UserId = string.Empty,
@@ -20,20 +20,20 @@ namespace Achieve.UniCodex.Editor
             Provider = "codex-cli"
         };
 
-        public UniCodexEditorCliClientAdapter(Func<UniCodexCliService> serviceFactory)
+        public UniAgentEditorCliClientAdapter(Func<UniAgentCliService> serviceFactory)
         {
             _serviceFactory = serviceFactory ?? throw new ArgumentNullException(nameof(serviceFactory));
         }
 
         public bool IsAvailable => true;
 
-        public UniCodexAuthState AuthState
+        public UniAgentAuthState AuthState
         {
             get
             {
                 lock (_authLock)
                 {
-                    return new UniCodexAuthState
+                    return new UniAgentAuthState
                     {
                         IsLoggedIn = _authState.IsLoggedIn,
                         UserId = _authState.UserId,
@@ -44,14 +44,14 @@ namespace Achieve.UniCodex.Editor
             }
         }
 
-        public Task<UniCodexResult> LoginAsync(UniCodexLoginRequest request, CancellationToken ct = default)
+        public Task<UniAgentResult> LoginAsync(UniAgentLoginRequest request, CancellationToken ct = default)
         {
             return Task.Run(() =>
             {
                 ct.ThrowIfCancellationRequested();
                 var service = _serviceFactory();
-                var loginRequest = request ?? new UniCodexLoginRequest();
-                UniCodexCommandResult command;
+                var loginRequest = request ?? new UniAgentLoginRequest();
+                UniAgentCommandResult command;
 
                 // Editor는 CLI Device Auth가 로그인 표준입니다.
                 if (loginRequest.UseDeviceAuth || string.IsNullOrWhiteSpace(loginRequest.BackendSessionToken))
@@ -60,7 +60,7 @@ namespace Achieve.UniCodex.Editor
                 }
                 else
                 {
-                    command = new UniCodexCommandResult
+                    command = new UniAgentCommandResult
                     {
                         Success = false,
                         Message = "BackendSessionToken login is not supported by the editor CLI adapter."
@@ -70,16 +70,16 @@ namespace Achieve.UniCodex.Editor
                 var status = service.QueryLoginStatus();
                 SetAuthState(status.Success);
 
-                return new UniCodexResult
+                return new UniAgentResult
                 {
                     Success = command.Success,
                     Message = command.Message,
-                    ErrorCode = command.Success ? UniCodexErrorCode.None : MapErrorCode(command.Message)
+                    ErrorCode = command.Success ? UniAgentErrorCode.None : MapErrorCode(command.Message)
                 };
             }, ct);
         }
 
-        public Task<UniCodexResult> LogoutAsync(CancellationToken ct = default)
+        public Task<UniAgentResult> LogoutAsync(CancellationToken ct = default)
         {
             return Task.Run(() =>
             {
@@ -88,28 +88,28 @@ namespace Achieve.UniCodex.Editor
                 var result = service.Logout();
                 SetAuthState(false);
 
-                return new UniCodexResult
+                return new UniAgentResult
                 {
                     Success = result.Success,
                     Message = result.Message,
-                    ErrorCode = result.Success ? UniCodexErrorCode.None : MapErrorCode(result.Message)
+                    ErrorCode = result.Success ? UniAgentErrorCode.None : MapErrorCode(result.Message)
                 };
             }, ct);
         }
 
-        public Task<UniCodexClientRunResult> RunAsync(UniCodexClientRunRequest request, CancellationToken ct = default)
+        public Task<UniAgentClientRunResult> RunAsync(UniAgentClientRunRequest request, CancellationToken ct = default)
         {
             return Task.Run(() =>
             {
                 ct.ThrowIfCancellationRequested();
                 if (request == null || string.IsNullOrWhiteSpace(request.Prompt))
                 {
-                    return new UniCodexClientRunResult
+                    return new UniAgentClientRunResult
                     {
                         Success = false,
                         Message = "Prompt is required.",
                         SessionId = string.Empty,
-                        ErrorCode = UniCodexErrorCode.InvalidRequest
+                        ErrorCode = UniAgentErrorCode.InvalidRequest
                     };
                 }
 
@@ -122,12 +122,12 @@ namespace Achieve.UniCodex.Editor
                 if (!result.Success)
                 {
                     var code = MapErrorCode(result.Message);
-                    if (code == UniCodexErrorCode.Unauthorized)
+                    if (code == UniAgentErrorCode.Unauthorized)
                     {
                         SetAuthState(false);
                     }
 
-                    return new UniCodexClientRunResult
+                    return new UniAgentClientRunResult
                     {
                         Success = false,
                         Message = result.Message,
@@ -139,7 +139,7 @@ namespace Achieve.UniCodex.Editor
                     };
                 }
 
-                return new UniCodexClientRunResult
+                return new UniAgentClientRunResult
                 {
                     Success = true,
                     Message = result.Message,
@@ -147,7 +147,7 @@ namespace Achieve.UniCodex.Editor
                     InputTokens = result.InputTokens,
                     OutputTokens = result.OutputTokens,
                     TotalTokens = result.TotalTokens,
-                    ErrorCode = UniCodexErrorCode.None
+                    ErrorCode = UniAgentErrorCode.None
                 };
             }, ct);
         }
@@ -156,7 +156,7 @@ namespace Achieve.UniCodex.Editor
         {
             lock (_authLock)
             {
-                _authState = new UniCodexAuthState
+                _authState = new UniAgentAuthState
                 {
                     IsLoggedIn = isLoggedIn,
                     UserId = string.Empty,
@@ -166,35 +166,35 @@ namespace Achieve.UniCodex.Editor
             }
         }
 
-        private static UniCodexErrorCode MapErrorCode(string message)
+        private static UniAgentErrorCode MapErrorCode(string message)
         {
             var text = string.IsNullOrWhiteSpace(message) ? string.Empty : message.Trim();
             if (string.IsNullOrWhiteSpace(text))
             {
-                return UniCodexErrorCode.Unknown;
+                return UniAgentErrorCode.Unknown;
             }
 
             if (text.IndexOf("not logged in", StringComparison.OrdinalIgnoreCase) >= 0)
             {
-                return UniCodexErrorCode.Unauthorized;
+                return UniAgentErrorCode.Unauthorized;
             }
 
             if (text.IndexOf("timed out", StringComparison.OrdinalIgnoreCase) >= 0)
             {
-                return UniCodexErrorCode.Timeout;
+                return UniAgentErrorCode.Timeout;
             }
 
             if (text.IndexOf("not installed", StringComparison.OrdinalIgnoreCase) >= 0)
             {
-                return UniCodexErrorCode.NotSupportedPlatform;
+                return UniAgentErrorCode.NotSupportedPlatform;
             }
 
             if (text.IndexOf("invalid", StringComparison.OrdinalIgnoreCase) >= 0)
             {
-                return UniCodexErrorCode.InvalidRequest;
+                return UniAgentErrorCode.InvalidRequest;
             }
 
-            return UniCodexErrorCode.Unknown;
+            return UniAgentErrorCode.Unknown;
         }
     }
 }

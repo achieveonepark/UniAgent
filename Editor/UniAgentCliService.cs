@@ -5,13 +5,13 @@ using System.IO;
 using System.Text;
 using System.Text.RegularExpressions;
 
-namespace Achieve.UniCodex.Editor
+namespace Achieve.UniAgent.Editor
 {
     /// <summary>
     /// Codex CLI 명령 실행을 감싸는 서비스 래퍼입니다.
     /// 설치/로그인 상태 확인과 채팅 실행을 담당합니다.
     /// </summary>
-    internal sealed class UniCodexCliService
+    internal sealed class UniAgentCliService
     {
         private static readonly Regex ThreadRegex = new Regex("\"thread_id\":\"([^\"]+)\"", RegexOptions.Compiled);
         private static readonly Regex JsonMessageRegex = new Regex("\"message\"\\s*:\\s*\"([^\"]+)\"", RegexOptions.Compiled);
@@ -31,6 +31,11 @@ namespace Achieve.UniCodex.Editor
         private static readonly Regex JsonSummaryTextRegex = new Regex("\"summary\"\\s*:\\s*\\[[^\\]]*\"text\"\\s*:\\s*\"([^\"]+)\"", RegexOptions.Compiled);
         private static readonly Regex DotKeywordRegex = new Regex("^[a-z0-9_]+(\\.[a-z0-9_]+)+$", RegexOptions.Compiled);
 
+        // Claude Code CLI 전용 파싱 패턴
+        private static readonly Regex ClaudeSessionIdRegex = new Regex("\"session_id\"\\s*:\\s*\"([^\"]+)\"", RegexOptions.Compiled);
+        private static readonly Regex ClaudeResultRegex = new Regex("\"result\"\\s*:\\s*\"((?:[^\"\\\\]|\\\\.)*)\"", RegexOptions.Compiled | RegexOptions.Singleline);
+        private static readonly Regex ClaudeIsErrorRegex = new Regex("\"is_error\"\\s*:\\s*(true|false)", RegexOptions.Compiled);
+
         private readonly string _cliPath;
         private readonly string _workingDirectory;
         private readonly bool _useProjectCodexHome;
@@ -39,11 +44,12 @@ namespace Achieve.UniCodex.Editor
         private readonly string _model;
         private readonly string _modelReasoningEffort;
         private readonly int _execTimeoutMs;
+        private readonly CliProvider _provider;
 
         /// <summary>
-        /// 지정한 프로젝트 컨텍스트로 Codex CLI 서비스 인스턴스를 생성합니다.
+        /// 지정한 프로젝트 컨텍스트로 CLI 서비스 인스턴스를 생성합니다.
         /// </summary>
-        public UniCodexCliService(
+        public UniAgentCliService(
             string cliPath,
             string workingDirectory,
             bool useProjectCodexHome,
@@ -51,9 +57,14 @@ namespace Achieve.UniCodex.Editor
             bool fullAuto,
             string model = null,
             string modelReasoningEffort = null,
-            int execTimeoutMs = UniCodexCliConstants.DefaultExecTimeoutMs)
+            int execTimeoutMs = UniAgentCliConstants.DefaultExecTimeoutMs,
+            CliProvider provider = CliProvider.Codex)
         {
-            _cliPath = string.IsNullOrWhiteSpace(cliPath) ? UniCodexCliConstants.DefaultCliPath : cliPath.Trim();
+            _provider = provider;
+            var defaultPath = provider == CliProvider.ClaudeCode
+                ? UniAgentCliConstants.DefaultClaudeCliPath
+                : UniAgentCliConstants.DefaultCliPath;
+            _cliPath = string.IsNullOrWhiteSpace(cliPath) ? defaultPath : cliPath.Trim();
             _workingDirectory = workingDirectory;
             _useProjectCodexHome = useProjectCodexHome;
             _projectCodexHome = projectCodexHome;
@@ -67,9 +78,9 @@ namespace Achieve.UniCodex.Editor
         /// <summary>
         /// 설치 상태와 버전을 확인한 뒤 로그인 상태를 조회합니다.
         /// </summary>
-        public UniCodexEnvironmentState RefreshEnvironmentState()
+        public UniAgentEnvironmentState RefreshEnvironmentState()
         {
-            var state = new UniCodexEnvironmentState();
+            var state = new UniAgentEnvironmentState();
             state.Installed = ResolveCliPathAndVersion(out state.VersionText, out state.ResolvedCliPath);
             if (!state.Installed)
             {
@@ -85,10 +96,10 @@ namespace Achieve.UniCodex.Editor
         /// <summary>
         /// 로그인 상태만 조회합니다.
         /// </summary>
-        public UniCodexCommandResult QueryLoginStatus()
+        public UniAgentCommandResult QueryLoginStatus()
         {
             var loggedIn = TryQueryLoginStatus(out var loginText);
-            return new UniCodexCommandResult
+            return new UniAgentCommandResult
             {
                 Success = loggedIn,
                 Message = loginText
@@ -96,12 +107,13 @@ namespace Achieve.UniCodex.Editor
         }
 
         /// <summary>
-        /// Codex CLI의 디바이스 인증 로그인 플로우를 시작합니다.
+        /// CLI 로그인 플로우를 시작합니다. Codex는 device-auth, Claude는 auth login을 사용합니다.
         /// </summary>
-        public UniCodexCommandResult LoginWithDeviceAuth()
+        public UniAgentCommandResult LoginWithDeviceAuth()
         {
-            var success = TryRunCodexCommand("login --device-auth", null, 240000, out var exitCode, out var output);
-            return new UniCodexCommandResult
+            var loginArgs = _provider == CliProvider.ClaudeCode ? "auth login" : "login --device-auth";
+            var success = TryRunCodexCommand(loginArgs, null, 240000, out var exitCode, out var output);
+            return new UniAgentCommandResult
             {
                 Success = success && exitCode == 0,
                 Message = output
@@ -109,12 +121,13 @@ namespace Achieve.UniCodex.Editor
         }
 
         /// <summary>
-        /// 현재 Codex CLI 사용자를 로그아웃합니다.
+        /// 현재 CLI 사용자를 로그아웃합니다.
         /// </summary>
-        public UniCodexCommandResult Logout()
+        public UniAgentCommandResult Logout()
         {
-            var success = TryRunCodexCommand("logout", null, 10000, out var exitCode, out var output);
-            return new UniCodexCommandResult
+            var logoutArgs = _provider == CliProvider.ClaudeCode ? "auth logout" : "logout";
+            var success = TryRunCodexCommand(logoutArgs, null, 10000, out var exitCode, out var output);
+            return new UniAgentCommandResult
             {
                 Success = success && exitCode == 0,
                 Message = output
@@ -122,11 +135,11 @@ namespace Achieve.UniCodex.Editor
         }
 
         /// <summary>
-        /// <c>codex exec</c>로 한 턴을 실행하고 출력 메타데이터를 파싱합니다.
+        /// 한 턴을 실행하고 출력 메타데이터를 파싱합니다. provider에 따라 Codex 또는 Claude CLI를 사용합니다.
         /// </summary>
-        public UniCodexRunResult Run(string prompt, string sessionId, Action<string> progressCallback = null)
+        public UniAgentRunResult Run(string prompt, string sessionId, Action<string> progressCallback = null)
         {
-            var request = new UniCodexRunRequest
+            var request = new UniAgentRunRequest
             {
                 CliPath = _cliPath,
                 WorkingDirectory = _workingDirectory,
@@ -140,13 +153,15 @@ namespace Achieve.UniCodex.Editor
                 TimeoutMs = _execTimeoutMs
             };
 
-            return RunCodex(request, progressCallback);
+            return _provider == CliProvider.ClaudeCode
+                ? RunClaude(request, progressCallback)
+                : RunCodex(request, progressCallback);
         }
 
         /// <summary>
         /// 실행 결과에서 토큰 사용량 요약 문자열을 생성합니다.
         /// </summary>
-        public static string BuildTokenSummary(UniCodexRunResult result)
+        public static string BuildTokenSummary(UniAgentRunResult result)
         {
             if (result == null)
             {
@@ -182,9 +197,13 @@ namespace Achieve.UniCodex.Editor
                 candidates.Add(_cliPath.Trim());
             }
 
-            for (var i = 0; i < UniCodexCliConstants.CliCandidates.Length; i++)
+            var builtinCandidates = _provider == CliProvider.ClaudeCode
+                ? UniAgentCliConstants.ClaudeCliCandidates
+                : UniAgentCliConstants.CliCandidates;
+
+            for (var i = 0; i < builtinCandidates.Length; i++)
             {
-                var candidate = UniCodexCliConstants.CliCandidates[i];
+                var candidate = builtinCandidates[i];
                 if (!candidates.Contains(candidate))
                 {
                     candidates.Add(candidate);
@@ -210,13 +229,15 @@ namespace Achieve.UniCodex.Editor
 
         private bool TryQueryLoginStatus(out string loginText, string cliPathOverride = null)
         {
-            if (!TryRunCodexCommand("login status", null, 10000, out var exitCode, out var output, cliPathOverride))
+            var statusArgs = _provider == CliProvider.ClaudeCode ? "auth status" : "login status";
+            if (!TryRunCodexCommand(statusArgs, null, 10000, out var exitCode, out var output, cliPathOverride))
             {
                 loginText = output;
                 return false;
             }
 
-            var notLoggedIn = output.IndexOf("Not logged in", StringComparison.OrdinalIgnoreCase) >= 0;
+            var notLoggedIn = output.IndexOf("Not logged in", StringComparison.OrdinalIgnoreCase) >= 0
+                || output.IndexOf("not authenticated", StringComparison.OrdinalIgnoreCase) >= 0;
             if (notLoggedIn)
             {
                 loginText = "Not logged in";
@@ -323,7 +344,7 @@ namespace Achieve.UniCodex.Editor
             }
         }
 
-        private static UniCodexRunResult RunCodex(UniCodexRunRequest request, Action<string> progressCallback)
+        private static UniAgentRunResult RunCodex(UniAgentRunRequest request, Action<string> progressCallback)
         {
             var outputFile = Path.Combine(Path.GetTempPath(), $"codex-last-{Guid.NewGuid():N}.txt");
             try
@@ -426,7 +447,7 @@ namespace Achieve.UniCodex.Editor
                     var timedOutThreadId = ExtractThreadId(timedOutCombined);
                     ExtractTokenUsage(timedOutCombined, out var timeoutInputTokens, out var timeoutOutputTokens, out var timeoutTotalTokens);
 
-                    return new UniCodexRunResult
+                    return new UniAgentRunResult
                     {
                         Success = false,
                         Message = $"codex execution timed out after {timeoutMs / 1000}s.",
@@ -470,7 +491,7 @@ namespace Achieve.UniCodex.Editor
                     reply = ExtractErrorMessage(combined);
                 }
 
-                return new UniCodexRunResult
+                return new UniAgentRunResult
                 {
                     Success = success,
                     Message = string.IsNullOrWhiteSpace(reply) ? "No response from codex CLI." : reply,
@@ -482,7 +503,7 @@ namespace Achieve.UniCodex.Editor
             }
             catch (Exception ex)
             {
-                return UniCodexRunResult.FromError($"codex execution failed: {ex.Message}");
+                return UniAgentRunResult.FromError($"codex execution failed: {ex.Message}");
             }
             finally
             {
@@ -500,7 +521,7 @@ namespace Achieve.UniCodex.Editor
             }
         }
 
-        private static string BuildCodexArguments(UniCodexRunRequest request, string outputFile)
+        private static string BuildCodexArguments(UniAgentRunRequest request, string outputFile)
         {
             var sb = new StringBuilder();
             sb.Append("exec ");
@@ -546,6 +567,170 @@ namespace Achieve.UniCodex.Editor
             sb.Append('-');
             return sb.ToString();
         }
+
+        // ── Claude Code CLI 실행 ────────────────────────────────────────────
+
+        private static UniAgentRunResult RunClaude(UniAgentRunRequest request, Action<string> progressCallback)
+        {
+            try
+            {
+                var psi = new ProcessStartInfo
+                {
+                    FileName = request.CliPath,
+                    WorkingDirectory = request.WorkingDirectory,
+                    Arguments = BuildClaudeArguments(request),
+                    RedirectStandardInput = true,
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true,
+                    UseShellExecute = false,
+                    CreateNoWindow = true
+                };
+                ConfigureUtf8Process(psi);
+
+                var stdoutBuilder = new StringBuilder();
+                var stderrBuilder = new StringBuilder();
+                var outputLock = new object();
+
+                using var process = new Process { StartInfo = psi };
+                process.OutputDataReceived += (_, args) =>
+                {
+                    if (args.Data == null) return;
+                    lock (outputLock) { stdoutBuilder.AppendLine(args.Data); }
+                    EmitProgressFromLine(args.Data, progressCallback);
+                };
+                process.ErrorDataReceived += (_, args) =>
+                {
+                    if (args.Data == null) return;
+                    lock (outputLock) { stderrBuilder.AppendLine(args.Data); }
+                };
+
+                process.Start();
+                process.BeginOutputReadLine();
+                process.BeginErrorReadLine();
+
+                process.StandardInput.Write(request.Prompt);
+                process.StandardInput.Close();
+
+                var timeoutMs = request.TimeoutMs;
+                var timedOut = timeoutMs > 0 && !process.WaitForExit(timeoutMs);
+                if (timedOut)
+                {
+                    try { process.Kill(); } catch { }
+                    try { process.WaitForExit(1500); } catch { }
+                    return new UniAgentRunResult
+                    {
+                        Success = false,
+                        Message = $"claude execution timed out after {timeoutMs / 1000}s.",
+                        ThreadId = string.Empty
+                    };
+                }
+                else if (timeoutMs <= 0)
+                {
+                    process.WaitForExit();
+                }
+
+                process.WaitForExit(250);
+                try { process.CancelOutputRead(); process.CancelErrorRead(); } catch { }
+
+                string stdout, stderr;
+                lock (outputLock)
+                {
+                    stdout = stdoutBuilder.ToString();
+                    stderr = stderrBuilder.ToString();
+                }
+
+                var combined = (stdout + "\n" + stderr).Trim();
+                var sessionId = ExtractClaudeSessionId(combined);
+                ExtractTokenUsage(combined, out var inputTokens, out var outputTokens, out var totalTokens);
+
+                var reply = ExtractClaudeResult(combined);
+                var isError = IsClaudeError(combined);
+                var success = process.ExitCode == 0 && !isError && !string.IsNullOrWhiteSpace(reply);
+
+                if (!success && string.IsNullOrWhiteSpace(reply))
+                {
+                    reply = ExtractErrorMessage(combined);
+                }
+
+                return new UniAgentRunResult
+                {
+                    Success = success,
+                    Message = string.IsNullOrWhiteSpace(reply) ? "No response from Claude CLI." : reply,
+                    ThreadId = sessionId,
+                    InputTokens = inputTokens,
+                    OutputTokens = outputTokens,
+                    TotalTokens = totalTokens
+                };
+            }
+            catch (Exception ex)
+            {
+                return UniAgentRunResult.FromError($"claude execution failed: {ex.Message}");
+            }
+        }
+
+        private static string BuildClaudeArguments(UniAgentRunRequest request)
+        {
+            var sb = new StringBuilder();
+            sb.Append("--print ");
+            sb.Append("--output-format json ");
+
+            if (!string.IsNullOrWhiteSpace(request.Model))
+            {
+                sb.Append("--model ").Append(EscapeArg(request.Model)).Append(' ');
+            }
+
+            if (!string.IsNullOrWhiteSpace(request.SessionId))
+            {
+                sb.Append("--resume ").Append(EscapeArg(request.SessionId)).Append(' ');
+            }
+
+            return sb.ToString().TrimEnd();
+        }
+
+        private static string ExtractClaudeResult(string output)
+        {
+            if (string.IsNullOrWhiteSpace(output))
+            {
+                return string.Empty;
+            }
+
+            var match = ClaudeResultRegex.Match(output);
+            if (!match.Success)
+            {
+                return string.Empty;
+            }
+
+            return match.Groups[1].Value
+                .Replace("\\n", "\n")
+                .Replace("\\r", "\r")
+                .Replace("\\t", "\t")
+                .Replace("\\\"", "\"")
+                .Replace("\\\\", "\\");
+        }
+
+        private static string ExtractClaudeSessionId(string output)
+        {
+            if (string.IsNullOrWhiteSpace(output))
+            {
+                return string.Empty;
+            }
+
+            var match = ClaudeSessionIdRegex.Match(output);
+            return match.Success ? match.Groups[1].Value : string.Empty;
+        }
+
+        private static bool IsClaudeError(string output)
+        {
+            if (string.IsNullOrWhiteSpace(output))
+            {
+                return false;
+            }
+
+            var match = ClaudeIsErrorRegex.Match(output);
+            return match.Success && string.Equals(match.Groups[1].Value, "true", StringComparison.Ordinal);
+        }
+
+        // ── Codex CLI 실행 ──────────────────────────────────────────────────
 
         private static string EscapeArg(string value)
         {

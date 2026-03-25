@@ -1,6 +1,6 @@
 {
-    "name": "Achieve.UniCodex",
-    "rootNamespace": "Achieve.UniCodex",
+    "name": "Achieve.UniAgent",
+    "rootNamespace": "Achieve.UniAgent",
     "references": [],
     "includePlatforms": [],
     "excludePlatforms": [],

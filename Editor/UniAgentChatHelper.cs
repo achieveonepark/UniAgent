@@ -4,12 +4,12 @@ using System.IO;
 using System.Text;
 using UnityEngine;
 
-namespace Achieve.UniCodex.Editor
+namespace Achieve.UniAgent.Editor
 {
     /// <summary>
     /// 프로젝트 경로 처리와 프롬프트/컨텍스트 구성을 담당하는 헬퍼입니다.
     /// </summary>
-    internal static class UniCodexChatHelper
+    internal static class UniAgentChatHelper
     {
         /// <summary>
         /// 사용자 입력과 프로젝트 컨텍스트, 선택적 타겟 파일을 합쳐 Codex 프롬프트를 생성합니다.
@@ -26,13 +26,13 @@ namespace Achieve.UniCodex.Editor
             sb.AppendLine("Unity Editor Codex bridge context:");
             sb.AppendLine($"- Project root: {GetProjectRootPath()}");
             sb.AppendLine($"- Unity action bridge file: {GetUnityActionFilePath()}");
-            sb.AppendLine("- For scene/object/component changes, write JSON actions to that file (schema in Assets/Editor/UniCodexUnityEditorHelper.cs).");
+            sb.AppendLine("- For scene/object/component changes, write JSON actions to that file (schema in Assets/Editor/UniAgentUnityEditorHelper.cs).");
             sb.AppendLine("- Unity action types: AddComponent, RemoveComponent, CreateSpriteObject, SavePrefabFromTarget, CreateCsvDataTable.");
             sb.AppendLine("- For image-to-scene: use CreateSpriteObject with spritePath.");
             sb.AppendLine("- Data-first policy: prefer CSV data tables for new gameplay/config data.");
             sb.AppendLine("- CSV table path rule: Assets/Resources/DataTables/*.csv");
             sb.AppendLine("- CSV format rule: header required and `id` column required.");
-            sb.AppendLine("- Runtime table loading/parsing: use UniCodexCsvDataTableProvider.");
+            sb.AppendLine("- Runtime table loading/parsing: use UniAgentCsvDataTableProvider.");
             sb.AppendLine("- Editor CSV automation: use CreateCsvDataTable action.");
             sb.AppendLine("- Follow workspace files and requested markdown context.");
             AppendOptimizationPolicy(sb);
@@ -84,7 +84,7 @@ namespace Achieve.UniCodex.Editor
         {
             if (string.IsNullOrWhiteSpace(projectCodexHomeRelative))
             {
-                return Path.Combine(GetProjectRootPath(), UniCodexCliConstants.DefaultCodexHomeRelative);
+                return Path.Combine(GetProjectRootPath(), UniAgentCliConstants.DefaultCodexHomeRelative);
             }
 
             if (Path.IsPathRooted(projectCodexHomeRelative))
@@ -100,7 +100,7 @@ namespace Achieve.UniCodex.Editor
         /// </summary>
         public static string GetUnityActionFilePath()
         {
-            return Path.Combine(GetProjectRootPath(), "Library", UniCodexCliConstants.UnityActionFileName);
+            return Path.Combine(GetProjectRootPath(), "Library", UniAgentCliConstants.UnityActionFileName);
         }
 
         private static void AppendOptimizationPolicy(StringBuilder sb)

@@ -1,4 +1,4 @@
-# UniCodex
+# UniAgent
 
 Unity Editor에서 Codex CLI를 채팅 기반으로 연결해 코드 작업과 Diff 적용을 지원하는 에디터 패키지입니다.
 Codex 클라이언트에 인증(Device Auth)한 뒤 에디터 안에서 바로 대화를 이어갈 수 있도록 구성되어 있으며,
@@ -6,7 +6,7 @@ Unity 컴포넌트/오브젝트를 접근해 수정할 수 있도록 Action Brid
 
 ## 핵심 기능
 
-- `Tools/Codex/Codex Chat` 에디터 창 제공
+- `Tools/UniAgent/UniAgent Chat` 에디터 창 제공
 - Codex 클라이언트 설치/인증 상태 확인, Device Auth 로그인, 로그아웃
 - `Plan` / `Build` 모드 전환
 - Build 모드 `Diff On` 시 변경안을 Unified Diff로 미리보기 후 적용
@@ -16,7 +16,7 @@ Unity 컴포넌트/오브젝트를 접근해 수정할 수 있도록 Action Brid
 - 세션 토큰 사용량 표시(원형 게이지 + in/out/total 요약)
 - Unity Action Bridge(JSON 파일 기반): 씬/오브젝트/컴포넌트 접근 및 수정 작업 자동 적용
 - Unity 메인 툴바(Play 버튼 영역) 단축 버튼 자동 주입
-- Runtime 코어 파사드 제공: `UniCodex.Data.*`, `UniCodex.Client.*`
+- Runtime 코어 파사드 제공: `UniAgent.Data.*`, `UniAgent.Client.*`
 
 ## 요구 사항
 
@@ -26,7 +26,7 @@ Unity 컴포넌트/오브젝트를 접근해 수정할 수 있도록 Action Brid
 
 모바일/런타임 클라이언트 연동 시:
 - 백엔드 프록시(인증/실행 API) 준비
-- 앱 로그인 후 백엔드 세션 토큰을 `UniCodex.Client.LoginAsync`에 전달
+- 앱 로그인 후 백엔드 세션 토큰을 `UniAgent.Client.LoginAsync`에 전달
 
 ## 설치
 
@@ -51,7 +51,7 @@ https://github.com/achieveonepark/unicodex.git#1.0.0
 
 ## 빠른 시작
 
-1. `Tools/Codex/Codex Chat` 실행 (또는 툴바 단축 버튼 클릭)
+1. `Tools/UniAgent/UniAgent Chat` 실행 (또는 툴바 단축 버튼 클릭)
 2. 우상단 `Settings`에서 `Login (Device)` 진행 후 `Refresh`
 3. `Plan` 또는 `Build` 모드 선택
 4. 프롬프트 입력 후 `Send` (`Enter` 전송, `Shift+Enter` 줄바꿈)
@@ -70,12 +70,12 @@ https://github.com/achieveonepark/unicodex.git#1.0.0
 - Mobile/Runtime: CLI 직접 로그인 불가, 백엔드 세션 토큰 기반 로그인 사용
 
 ```csharp
-using Achieve.UniCodex;
+using Achieve.UniAgent;
 
 // 백엔드 게이트웨이 구현체를 주입
-UniCodex.ConfigureClient(new UniCodexBackendProxyClient(myGateway));
+UniAgent.ConfigureClient(new UniAgentBackendProxyClient(myGateway));
 
-await UniCodex.Client.LoginAsync(new UniCodexLoginRequest
+await UniAgent.Client.LoginAsync(new UniAgentLoginRequest
 {
     BackendSessionToken = sessionToken
 });
@@ -84,10 +84,10 @@ await UniCodex.Client.LoginAsync(new UniCodexLoginRequest
 ## Runtime API 예시
 
 ```csharp
-using Achieve.UniCodex;
+using Achieve.UniAgent;
 
 // CSV 데이터테이블 로드
-var enemyTable = UniCodex.Data.LoadCsv("EnemyStats");
+var enemyTable = UniAgent.Data.LoadCsv("EnemyStats");
 if (enemyTable.TryGetRow("slime_001", out var row))
 {
     var hp = row.GetInt("hp", 0);
