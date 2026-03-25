@@ -5,18 +5,18 @@ using UnityEditor;
 using UnityEngine;
 using UnityEngine.UIElements;
 
-namespace Achieve.UniCodex.Editor
+namespace Achieve.UniAgent.Editor
 {
     /// <summary>
     /// Injects a small shortcut button into the Unity main toolbar (left of play controls).
     /// </summary>
     [InitializeOnLoad]
-    internal static class UniCodexToolbarShortcut
+    internal static class UniAgentToolbarShortcut
     {
         private const string ToolbarTypeName = "UnityEditor.Toolbar, UnityEditor";
         private const string GUIViewTypeName = "UnityEditor.GUIView, UnityEditor";
-        private const string ShortcutButtonName = "UniCodexToolbarShortcut";
-        private const string StatusDotName = "UniCodexToolbarStatusDot";
+        private const string ShortcutButtonName = "UniAgentToolbarShortcut";
+        private const string StatusDotName = "UniAgentToolbarStatusDot";
         private const double PollIntervalSeconds = 0.8d;
         private enum ShortcutStatus
         {
@@ -41,7 +41,7 @@ namespace Achieve.UniCodex.Editor
         private static int _cachedToolbarId;
         private static ShortcutStatus _shortcutStatus = ShortcutStatus.Ready;
 
-        static UniCodexToolbarShortcut()
+        static UniAgentToolbarShortcut()
         {
             EditorApplication.update -= EnsureShortcutInstalled;
             EditorApplication.update += EnsureShortcutInstalled;
@@ -265,7 +265,7 @@ namespace Achieve.UniCodex.Editor
             var button = new Button(OnShortcutButtonClicked)
             {
                 name = ShortcutButtonName,
-                tooltip = "Open Codex Chat"
+                tooltip = "Open UniAgent Chat"
             };
 
             button.style.width = 24f;
@@ -399,7 +399,7 @@ namespace Achieve.UniCodex.Editor
                 SetReadyState();
             }
 
-            UniCodexChatWindow.OpenWindow();
+            UniAgentChatWindow.OpenWindow();
         }
 
         private static void ApplyShortcutVisual(Button button)
@@ -415,7 +415,7 @@ namespace Achieve.UniCodex.Editor
                 dot.style.backgroundColor = GetStatusColor(_shortcutStatus);
             }
 
-            button.tooltip = $"Open Codex Chat ({GetStatusLabel(_shortcutStatus)})";
+            button.tooltip = $"Open UniAgent Chat ({GetStatusLabel(_shortcutStatus)})";
         }
 
         private static Color GetStatusColor(ShortcutStatus status)

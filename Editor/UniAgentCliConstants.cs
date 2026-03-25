@@ -1,12 +1,12 @@
-namespace Achieve.UniCodex.Editor
+namespace Achieve.UniAgent.Editor
 {
     /// <summary>
     /// Codex 채팅 에디터 통합에서 공용으로 사용하는 상수 모음입니다.
     /// </summary>
-    internal static class UniCodexCliConstants
+    internal static class UniAgentCliConstants
     {
         /// <summary>창 상태 저장용 EditorPrefs 키 접두사입니다.</summary>
-        public const string PrefPrefix = "UniCodex.CodexChat.";
+        public const string PrefPrefix = "UniAgent.CodexChat.";
 
         /// <summary>기본 Codex CLI 명령 이름입니다.</summary>
         public const string DefaultCliPath = "codex";
@@ -35,6 +35,21 @@ namespace Achieve.UniCodex.Editor
             MacBundledCliPath,
             "/opt/homebrew/bin/codex",
             "/usr/local/bin/codex"
+        };
+
+        // ── Claude Code CLI ────────────────────────────────────────────────
+
+        /// <summary>기본 Claude Code CLI 명령 이름입니다.</summary>
+        public const string DefaultClaudeCliPath = "claude";
+        /// <summary>기본 Claude Code CLI 모델 ID입니다.</summary>
+        public const string DefaultClaudeModel = "claude-sonnet-4-6";
+
+        /// <summary>검색 순서대로 시도할 Claude Code CLI 실행 경로 목록입니다.</summary>
+        public static readonly string[] ClaudeCliCandidates =
+        {
+            DefaultClaudeCliPath,
+            "/opt/homebrew/bin/claude",
+            "/usr/local/bin/claude"
         };
     }
 }

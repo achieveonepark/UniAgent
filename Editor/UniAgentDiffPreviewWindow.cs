@@ -8,15 +8,15 @@ using UnityEditor;
 using UnityEngine;
 using UnityEngine.UIElements;
 
-namespace Achieve.UniCodex.Editor
+namespace Achieve.UniAgent.Editor
 {
     /// <summary>
     /// 제안된 코드 변경을 전용 Diff 창으로 표시하고 적용할 수 있습니다.
     /// </summary>
-    public sealed class UniCodexDiffPreviewWindow : EditorWindow
+    public sealed class UniAgentDiffPreviewWindow : EditorWindow
     {
         private const string NoChangesToken = "NO_CHANGES";
-        private const string ManualRefreshPrefKey = UniCodexCliConstants.PrefPrefix + "ManualRefreshMode";
+        private const string ManualRefreshPrefKey = UniAgentCliConstants.PrefPrefix + "ManualRefreshMode";
         private const float LineNumberColumnWidth = 46f;
         private static readonly Regex HunkHeaderRegex = new Regex(
             @"^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@",
@@ -43,8 +43,8 @@ namespace Achieve.UniCodex.Editor
         private int _activeTabIndex;
         private int _initialTabCount;
         private string _tabBuildError = string.Empty;
-        private Func<string, string, Task<UniCodexRunResult>> _refineRequestHandler;
-        private readonly List<UniCodexDiffTabState> _tabs = new List<UniCodexDiffTabState>();
+        private Func<string, string, Task<UniAgentRunResult>> _refineRequestHandler;
+        private readonly List<UniAgentDiffTabState> _tabs = new List<UniAgentDiffTabState>();
 
         private enum DiffLineKind
         {
@@ -57,17 +57,17 @@ namespace Achieve.UniCodex.Editor
             Context
         }
 
-        private sealed class UniCodexFilePatch
+        private sealed class UniAgentFilePatch
         {
             /// <summary>Diff 헤더의 원본 파일 경로입니다.</summary>
             public string OldPath;
             /// <summary>Diff 헤더의 변경 후 파일 경로입니다.</summary>
             public string NewPath;
             /// <summary>이 파일 패치에 포함된 hunk 목록입니다.</summary>
-            public readonly List<UniCodexDiffHunk> Hunks = new List<UniCodexDiffHunk>();
+            public readonly List<UniAgentDiffHunk> Hunks = new List<UniAgentDiffHunk>();
         }
 
-        private sealed class UniCodexDiffHunk
+        private sealed class UniAgentDiffHunk
         {
             /// <summary>이 hunk의 원본 파일 시작 라인입니다.</summary>
             public int OldStart;
@@ -92,14 +92,14 @@ namespace Achieve.UniCodex.Editor
             Error
         }
 
-        private sealed class UniCodexDiffTabState
+        private sealed class UniAgentDiffTabState
         {
             /// <summary>탭 고유 ID입니다.</summary>
             public string Id;
             /// <summary>사용자에게 표시할 탭 이름입니다.</summary>
             public string DisplayName;
             /// <summary>이 탭의 파싱된 패치 모델입니다.</summary>
-            public UniCodexFilePatch Patch;
+            public UniAgentFilePatch Patch;
             /// <summary>이 탭에서 렌더링하는 unified diff 텍스트입니다.</summary>
             public string DiffText;
             /// <summary>어시스턴트가 반환한 refine 설명 텍스트입니다.</summary>
@@ -108,9 +108,9 @@ namespace Achieve.UniCodex.Editor
             public DiffTabStatus Status;
         }
 
-        internal static void ShowDiff(string diffTitle, string diffText, Func<string, string, Task<UniCodexRunResult>> refineRequestHandler = null)
+        internal static void ShowDiff(string diffTitle, string diffText, Func<string, string, Task<UniAgentRunResult>> refineRequestHandler = null)
         {
-            var window = GetWindow<UniCodexDiffPreviewWindow>();
+            var window = GetWindow<UniAgentDiffPreviewWindow>();
             window.titleContent = new GUIContent("Codex Diff Preview");
             window.minSize = new Vector2(820f, 520f);
             window._diffTitle = string.IsNullOrWhiteSpace(diffTitle) ? "Diff Preview" : diffTitle.Trim();
@@ -333,7 +333,7 @@ namespace Achieve.UniCodex.Editor
                 _refineButton.SetEnabled(!_isRefining && activeTab != null && HasApplicableDiff(activeTab.DiffText));
                 _refineButton.tooltip = _refineRequestHandler != null
                     ? "Request another refactor pass before apply"
-                    : "Open Codex Chat window and run a diff turn first";
+                    : "Open UniAgent Chat window and run a diff turn first";
             }
 
             if (_refineInputField != null)
@@ -369,7 +369,7 @@ namespace Achieve.UniCodex.Editor
             if (!BuildTabsFromDiff(source, _tabs, out var parseError))
             {
                 _tabBuildError = parseError ?? string.Empty;
-                _tabs.Add(new UniCodexDiffTabState
+                _tabs.Add(new UniAgentDiffTabState
                 {
                     Id = Guid.NewGuid().ToString("N"),
                     DisplayName = "RAW Response",
@@ -383,7 +383,7 @@ namespace Achieve.UniCodex.Editor
             ClampActiveTabIndex();
         }
 
-        private bool BuildTabsFromDiff(string diffText, List<UniCodexDiffTabState> outputTabs, out string error)
+        private bool BuildTabsFromDiff(string diffText, List<UniAgentDiffTabState> outputTabs, out string error)
         {
             error = string.Empty;
             outputTabs?.Clear();
@@ -418,7 +418,7 @@ namespace Achieve.UniCodex.Editor
             return true;
         }
 
-        private void RenderRefineNarrative(UniCodexDiffTabState activeTab)
+        private void RenderRefineNarrative(UniAgentDiffTabState activeTab)
         {
             if (_refineNarrativePanel == null || _refineNarrativeLabel == null || _refineNarrativeTitleLabel == null)
             {
@@ -438,9 +438,9 @@ namespace Achieve.UniCodex.Editor
             _refineNarrativeLabel.text = DecodeBasicHtmlEntities(narrative.Trim());
         }
 
-        private static UniCodexDiffTabState CreateTabStateFromPatch(UniCodexFilePatch patch)
+        private static UniAgentDiffTabState CreateTabStateFromPatch(UniAgentFilePatch patch)
         {
-            return new UniCodexDiffTabState
+            return new UniAgentDiffTabState
             {
                 Id = Guid.NewGuid().ToString("N"),
                 DisplayName = BuildPatchDisplayName(patch),
@@ -451,7 +451,7 @@ namespace Achieve.UniCodex.Editor
             };
         }
 
-        private static string BuildPatchDisplayName(UniCodexFilePatch patch)
+        private static string BuildPatchDisplayName(UniAgentFilePatch patch)
         {
             if (patch == null)
             {
@@ -468,7 +468,7 @@ namespace Achieve.UniCodex.Editor
             return $"{changeType} {path}";
         }
 
-        private static string GetPatchChangeType(UniCodexFilePatch patch)
+        private static string GetPatchChangeType(UniAgentFilePatch patch)
         {
             if (patch == null)
             {
@@ -495,7 +495,7 @@ namespace Achieve.UniCodex.Editor
             return "M";
         }
 
-        private static string BuildPatchUnifiedDiffText(UniCodexFilePatch patch)
+        private static string BuildPatchUnifiedDiffText(UniAgentFilePatch patch)
         {
             if (patch == null)
             {
@@ -550,7 +550,7 @@ namespace Achieve.UniCodex.Editor
             return sb.ToString().TrimEnd('\n', '\r');
         }
 
-        private UniCodexDiffTabState GetActiveTab()
+        private UniAgentDiffTabState GetActiveTab()
         {
             if (_tabs.Count == 0)
             {
@@ -572,7 +572,7 @@ namespace Achieve.UniCodex.Editor
             _activeTabIndex = Mathf.Clamp(_activeTabIndex, 0, _tabs.Count - 1);
         }
 
-        private string BuildMetaText(UniCodexDiffTabState activeTab)
+        private string BuildMetaText(UniAgentDiffTabState activeTab)
         {
             var pendingCount = _tabs.Count;
             var totalCount = Math.Max(_initialTabCount, pendingCount);
@@ -684,7 +684,7 @@ namespace Achieve.UniCodex.Editor
             }
         }
 
-        private static string BuildTabButtonText(UniCodexDiffTabState tab)
+        private static string BuildTabButtonText(UniAgentDiffTabState tab)
         {
             if (tab == null)
             {
@@ -702,7 +702,7 @@ namespace Achieve.UniCodex.Editor
             }
         }
 
-        private static Color GetTabBackgroundColor(UniCodexDiffTabState tab, bool isActive)
+        private static Color GetTabBackgroundColor(UniAgentDiffTabState tab, bool isActive)
         {
             if (tab != null && tab.Status == DiffTabStatus.Error)
             {
@@ -1036,13 +1036,13 @@ namespace Achieve.UniCodex.Editor
             EnsureRefineHandler();
             if (_refineRequestHandler == null)
             {
-                UniCodexChatWindow.OpenWindow();
+                UniAgentChatWindow.OpenWindow();
                 EnsureRefineHandler();
             }
 
             if (_refineRequestHandler == null)
             {
-                ShowNotification(new GUIContent("Refine unavailable: run a new diff turn from Codex Chat"));
+                ShowNotification(new GUIContent("Refine unavailable: run a new diff turn from UniAgent Chat"));
                 return;
             }
 
@@ -1067,7 +1067,7 @@ namespace Achieve.UniCodex.Editor
                 _metaLabel.text = "Refining with Codex...";
             }
 
-            Task<UniCodexRunResult> task;
+            Task<UniAgentRunResult> task;
             try
             {
                 task = _refineRequestHandler.Invoke(activeTab.DiffText ?? string.Empty, refineInstruction);
@@ -1093,13 +1093,13 @@ namespace Achieve.UniCodex.Editor
             task.ContinueWith(t =>
             {
                 var result = t.IsFaulted
-                    ? UniCodexRunResult.FromError(t.Exception?.GetBaseException().Message ?? "Unknown refine error")
+                    ? UniAgentRunResult.FromError(t.Exception?.GetBaseException().Message ?? "Unknown refine error")
                     : t.Result;
                 EditorApplication.delayCall += () => HandleRefineResult(result);
             });
         }
 
-        private void HandleRefineResult(UniCodexRunResult result)
+        private void HandleRefineResult(UniAgentRunResult result)
         {
             _isRefining = false;
             var activeTab = GetActiveTab();
@@ -1342,7 +1342,7 @@ namespace Achieve.UniCodex.Editor
                 return;
             }
 
-            _refineRequestHandler = UniCodexChatWindow.TryGetDiffRefineHandler();
+            _refineRequestHandler = UniAgentChatWindow.TryGetDiffRefineHandler();
         }
 
         private void ApplyDiffToProject()
@@ -1394,7 +1394,7 @@ namespace Achieve.UniCodex.Editor
             ShowNotification(new GUIContent($"{message} | Remaining tabs: {_tabs.Count}"));
         }
 
-        private bool TryApplyActiveTab(UniCodexDiffTabState tab, out string summary, out string error)
+        private bool TryApplyActiveTab(UniAgentDiffTabState tab, out string summary, out string error)
         {
             summary = string.Empty;
             error = string.Empty;
@@ -1434,7 +1434,7 @@ namespace Achieve.UniCodex.Editor
             return true;
         }
 
-        private bool TryApplyPatches(List<UniCodexFilePatch> patches, out string summary, out string error)
+        private bool TryApplyPatches(List<UniAgentFilePatch> patches, out string summary, out string error)
         {
             summary = string.Empty;
             error = string.Empty;
@@ -1493,7 +1493,7 @@ namespace Achieve.UniCodex.Editor
             return true;
         }
 
-        private static bool TryApplySinglePatch(string targetAbsolutePath, UniCodexFilePatch patch, out string error)
+        private static bool TryApplySinglePatch(string targetAbsolutePath, UniAgentFilePatch patch, out string error)
         {
             error = string.Empty;
             var existedBefore = File.Exists(targetAbsolutePath);
@@ -1524,7 +1524,7 @@ namespace Achieve.UniCodex.Editor
             return true;
         }
 
-        private static bool TryApplyHunks(string originalText, string newline, List<UniCodexDiffHunk> hunks, out string updatedText, out string error)
+        private static bool TryApplyHunks(string originalText, string newline, List<UniAgentDiffHunk> hunks, out string updatedText, out string error)
         {
             updatedText = originalText ?? string.Empty;
             error = string.Empty;
@@ -1663,9 +1663,9 @@ namespace Achieve.UniCodex.Editor
             return sb.ToString();
         }
 
-        private bool TryParseUnifiedDiff(string diffText, out List<UniCodexFilePatch> patches, out string error)
+        private bool TryParseUnifiedDiff(string diffText, out List<UniAgentFilePatch> patches, out string error)
         {
-            patches = new List<UniCodexFilePatch>();
+            patches = new List<UniAgentFilePatch>();
             error = string.Empty;
             var normalized = NormalizeLineEndings(diffText);
             var lines = normalized.Split('\n');
@@ -1679,7 +1679,7 @@ namespace Achieve.UniCodex.Editor
                     continue;
                 }
 
-                var patch = new UniCodexFilePatch
+                var patch = new UniAgentFilePatch
                 {
                     OldPath = ParseDiffPathToken(lines[cursor]),
                     NewPath = ParseDiffPathToken(lines[cursor + 1])
@@ -1701,7 +1701,7 @@ namespace Achieve.UniCodex.Editor
                         return false;
                     }
 
-                    var hunk = new UniCodexDiffHunk
+                    var hunk = new UniAgentDiffHunk
                     {
                         OldStart = oldStart,
                         NewStart = newStart
@@ -1849,7 +1849,7 @@ namespace Achieve.UniCodex.Editor
                 }
             }
 
-            var root = Path.GetFullPath(UniCodexChatHelper.GetProjectRootPath()).Replace('\\', '/');
+            var root = Path.GetFullPath(UniAgentChatHelper.GetProjectRootPath()).Replace('\\', '/');
             absolutePath = Path.GetFullPath(Path.Combine(root, normalized)).Replace('\\', '/');
             var inProject = absolutePath.StartsWith(root + "/", StringComparison.OrdinalIgnoreCase)
                             || string.Equals(absolutePath, root, StringComparison.OrdinalIgnoreCase);

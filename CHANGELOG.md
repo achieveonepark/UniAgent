@@ -5,7 +5,7 @@
 ### Added
 
 - 초기 릴리즈: `com.achieve.uni-codex` 패키지 공개
-- `Tools/Codex/Codex Chat` 에디터 채팅 창 추가
+- `Tools/UniAgent/UniAgent Chat` 에디터 채팅 창 추가
 - Codex 설치/로그인 상태 점검 및 Device Auth 로그인/로그아웃 흐름 추가
 - `Plan`/`Build` 채팅 모드 및 Build 전용 `Diff On` 토글 추가
 - `Codex Diff Preview` 창 추가
@@ -26,8 +26,8 @@
 - Codex CLI 래퍼 서비스 추가(경로 탐색/버전 확인, `codex exec --json` 실행, thread resume)
 - Codex CLI 출력에서 진행 상태(progress) 메시지 파싱 추가
 - Codex CLI 출력에서 토큰 사용량(input/output/total) 추출 추가
-- Runtime CSV 파서/로더 추가: `UniCodexCsvDataTableProvider`
-- Runtime 코어 파사드 추가: `UniCodex.Data`, `UniCodex.Client`
-- Runtime 백엔드 프록시 클라이언트 추가: `UniCodexBackendProxyClient`, `IUniCodexBackendGateway`
-- Editor 실행 경로를 `UniCodex.Client` 계약과 연결(어댑터 기반)
+- Runtime CSV 파서/로더 추가: `UniAgentCsvDataTableProvider`
+- Runtime 코어 파사드 추가: `UniAgent.Data`, `UniAgent.Client`
+- Runtime 백엔드 프록시 클라이언트 추가: `UniAgentBackendProxyClient`, `IUniAgentBackendGateway`
+- Editor 실행 경로를 `UniAgent.Client` 계약과 연결(어댑터 기반)
 - 모바일/런타임 로그인 방식 명시: 백엔드 세션 토큰 기반 로그인

@@ -5,23 +5,23 @@ using System.IO;
 using System.Text;
 using UnityEngine;
 
-namespace Achieve.UniCodex
+namespace Achieve.UniAgent
 {
     /// <summary>
     /// CSV 데이터테이블 한 개를 표현하는 읽기 전용 뷰입니다.
     /// </summary>
-    public sealed class UniCodexCsvTable
+    public sealed class UniAgentCsvTable
     {
         private readonly IReadOnlyList<string> _columns;
-        private readonly IReadOnlyList<UniCodexCsvRowView> _rows;
-        private readonly Dictionary<string, UniCodexCsvRowView> _rowById;
+        private readonly IReadOnlyList<UniAgentCsvRowView> _rows;
+        private readonly Dictionary<string, UniAgentCsvRowView> _rowById;
 
-        internal UniCodexCsvTable(string name, List<string> columns, List<UniCodexCsvRowView> rows)
+        internal UniAgentCsvTable(string name, List<string> columns, List<UniAgentCsvRowView> rows)
         {
             Name = name ?? string.Empty;
             _columns = (columns ?? new List<string>()).AsReadOnly();
-            _rows = (rows ?? new List<UniCodexCsvRowView>()).AsReadOnly();
-            _rowById = new Dictionary<string, UniCodexCsvRowView>(StringComparer.Ordinal);
+            _rows = (rows ?? new List<UniAgentCsvRowView>()).AsReadOnly();
+            _rowById = new Dictionary<string, UniAgentCsvRowView>(StringComparer.Ordinal);
 
             for (var i = 0; i < _rows.Count; i++)
             {
@@ -42,10 +42,10 @@ namespace Achieve.UniCodex
         public IReadOnlyList<string> Columns => _columns;
 
         /// <summary>CSV 데이터 행 목록입니다.</summary>
-        public IReadOnlyList<UniCodexCsvRowView> Rows => _rows;
+        public IReadOnlyList<UniAgentCsvRowView> Rows => _rows;
 
         /// <summary>id로 행을 조회합니다.</summary>
-        public bool TryGetRow(string id, out UniCodexCsvRowView row)
+        public bool TryGetRow(string id, out UniAgentCsvRowView row)
         {
             row = null;
             if (string.IsNullOrWhiteSpace(id))
@@ -60,11 +60,11 @@ namespace Achieve.UniCodex
     /// <summary>
     /// CSV 한 행의 컬럼 접근/형 변환을 제공하는 읽기 전용 뷰입니다.
     /// </summary>
-    public sealed class UniCodexCsvRowView
+    public sealed class UniAgentCsvRowView
     {
         private readonly Dictionary<string, string> _valuesByColumn;
 
-        internal UniCodexCsvRowView(string id, Dictionary<string, string> valuesByColumn)
+        internal UniAgentCsvRowView(string id, Dictionary<string, string> valuesByColumn)
         {
             Id = id ?? string.Empty;
             _valuesByColumn = valuesByColumn ?? new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
@@ -136,16 +136,16 @@ namespace Achieve.UniCodex
     /// <summary>
     /// Resources/DataTables 경로의 CSV를 로드/파싱/캐시하는 런타임 제공자입니다.
     /// </summary>
-    public static class UniCodexCsvDataTableProvider
+    public static class UniAgentCsvDataTableProvider
     {
         private static readonly object CacheLock = new object();
-        private static readonly Dictionary<string, UniCodexCsvTable> TableCache =
-            new Dictionary<string, UniCodexCsvTable>(StringComparer.OrdinalIgnoreCase);
+        private static readonly Dictionary<string, UniAgentCsvTable> TableCache =
+            new Dictionary<string, UniAgentCsvTable>(StringComparer.OrdinalIgnoreCase);
 
         /// <summary>
         /// 테이블을 로드합니다. 실패 시 예외를 던집니다.
         /// </summary>
-        public static UniCodexCsvTable Load(string tableName, bool reload = false)
+        public static UniAgentCsvTable Load(string tableName, bool reload = false)
         {
             if (TryLoad(tableName, out var table, reload))
             {
@@ -159,13 +159,13 @@ namespace Achieve.UniCodex
         /// <summary>
         /// 테이블 로드를 시도합니다. 실패 시 false를 반환하며 콘솔에 상세 에러를 남깁니다.
         /// </summary>
-        public static bool TryLoad(string tableName, out UniCodexCsvTable table, bool reload = false)
+        public static bool TryLoad(string tableName, out UniAgentCsvTable table, bool reload = false)
         {
             table = null;
             var normalizedTableName = NormalizeTableName(tableName);
             if (string.IsNullOrWhiteSpace(normalizedTableName))
             {
-                Debug.LogError("UniCodexCsvDataTableProvider: tableName is empty.");
+                Debug.LogError("UniAgentCsvDataTableProvider: tableName is empty.");
                 return false;
             }
 
@@ -183,18 +183,18 @@ namespace Achieve.UniCodex
             if (textAsset == null)
             {
                 Debug.LogError(
-                    $"UniCodexCsvDataTableProvider: table not found at Resources path `{resourcePath}` (file expected: Assets/Resources/{resourcePath}.csv).");
+                    $"UniAgentCsvDataTableProvider: table not found at Resources path `{resourcePath}` (file expected: Assets/Resources/{resourcePath}.csv).");
                 return false;
             }
 
-            UniCodexCsvTable parsedTable;
+            UniAgentCsvTable parsedTable;
             try
             {
                 parsedTable = ParseTable(normalizedTableName, textAsset.text);
             }
             catch (Exception ex)
             {
-                Debug.LogError($"UniCodexCsvDataTableProvider: parse failed for `{normalizedTableName}`. {ex.Message}");
+                Debug.LogError($"UniAgentCsvDataTableProvider: parse failed for `{normalizedTableName}`. {ex.Message}");
                 return false;
             }
 
@@ -230,7 +230,7 @@ namespace Achieve.UniCodex
             return string.IsNullOrWhiteSpace(withoutExtension) ? string.Empty : withoutExtension;
         }
 
-        private static UniCodexCsvTable ParseTable(string tableName, string csvText)
+        private static UniAgentCsvTable ParseTable(string tableName, string csvText)
         {
             var records = ParseCsvRecords(csvText);
             if (records.Count == 0)
@@ -278,7 +278,7 @@ namespace Achieve.UniCodex
                 throw new FormatException("CSV must contain `id` column.");
             }
 
-            var rows = new List<UniCodexCsvRowView>();
+            var rows = new List<UniAgentCsvRowView>();
             var idSet = new HashSet<string>(StringComparer.Ordinal);
             for (var rowIndex = 1; rowIndex < records.Count; rowIndex++)
             {
@@ -311,10 +311,10 @@ namespace Achieve.UniCodex
                     valueMap[columns[colIndex]] = values[colIndex] ?? string.Empty;
                 }
 
-                rows.Add(new UniCodexCsvRowView(idValue, valueMap));
+                rows.Add(new UniAgentCsvRowView(idValue, valueMap));
             }
 
-            return new UniCodexCsvTable(tableName, columns, rows);
+            return new UniAgentCsvTable(tableName, columns, rows);
         }
 
         private static List<List<string>> ParseCsvRecords(string text)

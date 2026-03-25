@@ -8,13 +8,13 @@ using UnityEditor.SceneManagement;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 
-namespace Achieve.UniCodex.Editor
+namespace Achieve.UniAgent.Editor
 {
     /// <summary>
     /// Codex CLI용 파일 기반 Unity 브리지입니다.
     /// Codex가 Library/CodexUnityActions.json에 액션 JSON을 기록하면 에디터에서 이를 적용합니다.
     /// </summary>
-    internal static class UniCodexUnityEditorHelper
+    internal static class UniAgentUnityEditorHelper
     {
         private const string MenuRoot = "Tools/Codex/Unity Helper/";
         private const string DefaultGeneratedPrefabFolder = "Assets/Res/Prefabs/CodexGenerated";
@@ -39,16 +39,16 @@ namespace Achieve.UniCodex.Editor
         [MenuItem(MenuRoot + "Write Action Template")]
         private static void WriteActionTemplateMenu()
         {
-            var actionPath = UniCodexChatHelper.GetUnityActionFilePath();
+            var actionPath = UniAgentChatHelper.GetUnityActionFilePath();
             Directory.CreateDirectory(Path.GetDirectoryName(actionPath) ?? "Library");
 
-            var template = new UniCodexUnityActionRequest
+            var template = new UniAgentUnityActionRequest
             {
                 scene = "Title",
                 saveScene = true,
                 actions = new[]
                 {
-                    new UniCodexUnityAction
+                    new UniAgentUnityAction
                     {
                         type = "CreateSpriteObject",
                         objectName = "GuideCat",
@@ -62,7 +62,7 @@ namespace Achieve.UniCodex.Editor
                         scaleY = 1f,
                         scaleZ = 1f
                     },
-                    new UniCodexUnityAction
+                    new UniAgentUnityAction
                     {
                         type = "SavePrefabFromTarget",
                         target = "GuideCat",
@@ -70,15 +70,15 @@ namespace Achieve.UniCodex.Editor
                         outputFolder = DefaultGeneratedPrefabFolder,
                         overwriteExisting = false
                     },
-                    new UniCodexUnityAction
+                    new UniAgentUnityAction
                     {
                         type = "CreateCsvDataTable",
                         tableName = "EnemyStats",
                         columns = new[] { "id", "name", "hp" },
                         rows = new[]
                         {
-                            new UniCodexCsvRow { values = new[] { "slime_001", "Slime", "25" } },
-                            new UniCodexCsvRow { values = new[] { "slime_002", "Big Slime", "40" } }
+                            new UniAgentCsvRow { values = new[] { "slime_001", "Slime", "25" } },
+                            new UniAgentCsvRow { values = new[] { "slime_002", "Big Slime", "40" } }
                         },
                         csvFolder = DefaultCsvTableFolder,
                         overwriteTable = false
@@ -146,7 +146,7 @@ namespace Achieve.UniCodex.Editor
         public static bool TryApplyPendingActions(out string summary)
         {
             summary = string.Empty;
-            var actionPath = UniCodexChatHelper.GetUnityActionFilePath();
+            var actionPath = UniAgentChatHelper.GetUnityActionFilePath();
             if (!File.Exists(actionPath))
             {
                 return false;
@@ -177,10 +177,10 @@ namespace Achieve.UniCodex.Editor
                 return true;
             }
 
-            UniCodexUnityActionRequest request;
+            UniAgentUnityActionRequest request;
             try
             {
-                request = JsonUtility.FromJson<UniCodexUnityActionRequest>(json);
+                request = JsonUtility.FromJson<UniAgentUnityActionRequest>(json);
             }
             catch (Exception ex)
             {
@@ -280,7 +280,7 @@ namespace Achieve.UniCodex.Editor
             }
         }
 
-        private static ActionOutcome ApplyAction(Scene scene, UniCodexUnityAction action, StringBuilder log)
+        private static ActionOutcome ApplyAction(Scene scene, UniAgentUnityAction action, StringBuilder log)
         {
             if (action == null || string.IsNullOrWhiteSpace(action.type))
             {
@@ -318,7 +318,7 @@ namespace Achieve.UniCodex.Editor
             return ActionOutcome.Failed;
         }
 
-        private static ActionOutcome TrySavePrefabFromTarget(Scene scene, UniCodexUnityAction action, StringBuilder log)
+        private static ActionOutcome TrySavePrefabFromTarget(Scene scene, UniAgentUnityAction action, StringBuilder log)
         {
             if (!TryFindTargetObject(scene, action.target, action.includeInactive, out var gameObject, out var findError))
             {
@@ -355,7 +355,7 @@ namespace Achieve.UniCodex.Editor
             return ActionOutcome.Applied;
         }
 
-        private static ActionOutcome TryCreateCsvDataTable(UniCodexUnityAction action, StringBuilder log)
+        private static ActionOutcome TryCreateCsvDataTable(UniAgentUnityAction action, StringBuilder log)
         {
             if (action == null)
             {
@@ -407,7 +407,7 @@ namespace Achieve.UniCodex.Editor
                 return ActionOutcome.Failed;
             }
 
-            var rows = action.rows ?? Array.Empty<UniCodexCsvRow>();
+            var rows = action.rows ?? Array.Empty<UniAgentCsvRow>();
             var idSet = new HashSet<string>(StringComparer.Ordinal);
             for (var rowIndex = 0; rowIndex < rows.Length; rowIndex++)
             {
@@ -464,7 +464,7 @@ namespace Achieve.UniCodex.Editor
             return ActionOutcome.Applied;
         }
 
-        private static ActionOutcome TryAddComponent(Scene scene, UniCodexUnityAction action, StringBuilder log)
+        private static ActionOutcome TryAddComponent(Scene scene, UniAgentUnityAction action, StringBuilder log)
         {
             if (!TryFindTargetObject(scene, action.target, action.includeInactive, out var gameObject, out var findError))
             {
@@ -497,7 +497,7 @@ namespace Achieve.UniCodex.Editor
             return ActionOutcome.Applied;
         }
 
-        private static ActionOutcome TryRemoveComponent(Scene scene, UniCodexUnityAction action, StringBuilder log)
+        private static ActionOutcome TryRemoveComponent(Scene scene, UniAgentUnityAction action, StringBuilder log)
         {
             if (!TryFindTargetObject(scene, action.target, action.includeInactive, out var gameObject, out var findError))
             {
@@ -525,7 +525,7 @@ namespace Achieve.UniCodex.Editor
             return ActionOutcome.Applied;
         }
 
-        private static ActionOutcome TryCreateSpriteObject(Scene scene, UniCodexUnityAction action, StringBuilder log)
+        private static ActionOutcome TryCreateSpriteObject(Scene scene, UniAgentUnityAction action, StringBuilder log)
         {
             if (!TryResolveSpriteAssetPath(action.spritePath, out var spriteAssetPath, out var spriteError))
             {
@@ -622,17 +622,17 @@ namespace Achieve.UniCodex.Editor
             var normalized = maybePath.Replace('\\', '/');
             if (normalized.StartsWith("Assets/", StringComparison.Ordinal))
             {
-                var absolute = Path.GetFullPath(Path.Combine(UniCodexChatHelper.GetProjectRootPath(), normalized));
+                var absolute = Path.GetFullPath(Path.Combine(UniAgentChatHelper.GetProjectRootPath(), normalized));
                 return File.Exists(absolute) ? normalized : string.Empty;
             }
 
-            var absoluteInput = Path.GetFullPath(Path.Combine(UniCodexChatHelper.GetProjectRootPath(), normalized));
+            var absoluteInput = Path.GetFullPath(Path.Combine(UniAgentChatHelper.GetProjectRootPath(), normalized));
             if (!File.Exists(absoluteInput))
             {
                 return string.Empty;
             }
 
-            var projectRoot = Path.GetFullPath(UniCodexChatHelper.GetProjectRootPath()).Replace('\\', '/');
+            var projectRoot = Path.GetFullPath(UniAgentChatHelper.GetProjectRootPath()).Replace('\\', '/');
             var absoluteNormalized = absoluteInput.Replace('\\', '/');
             if (!absoluteNormalized.StartsWith(projectRoot, StringComparison.OrdinalIgnoreCase))
             {
@@ -652,17 +652,17 @@ namespace Achieve.UniCodex.Editor
             {
                 var fileName = Path.GetFileName(externalAbsolutePath);
                 var importFolder = "Assets/Res/Sprites/CodexImported";
-                Directory.CreateDirectory(Path.Combine(UniCodexChatHelper.GetProjectRootPath(), "Assets/Res/Sprites/CodexImported"));
+                Directory.CreateDirectory(Path.Combine(UniAgentChatHelper.GetProjectRootPath(), "Assets/Res/Sprites/CodexImported"));
 
                 var destinationPath = $"{importFolder}/{fileName}".Replace('\\', '/');
-                var fullDestinationPath = Path.GetFullPath(Path.Combine(UniCodexChatHelper.GetProjectRootPath(), destinationPath));
+                var fullDestinationPath = Path.GetFullPath(Path.Combine(UniAgentChatHelper.GetProjectRootPath(), destinationPath));
 
                 if (File.Exists(fullDestinationPath))
                 {
                     var name = Path.GetFileNameWithoutExtension(fileName);
                     var ext = Path.GetExtension(fileName);
                     destinationPath = $"{importFolder}/{name}_{Guid.NewGuid():N}{ext}".Replace('\\', '/');
-                    fullDestinationPath = Path.GetFullPath(Path.Combine(UniCodexChatHelper.GetProjectRootPath(), destinationPath));
+                    fullDestinationPath = Path.GetFullPath(Path.Combine(UniAgentChatHelper.GetProjectRootPath(), destinationPath));
                 }
 
                 File.Copy(externalAbsolutePath, fullDestinationPath);
@@ -833,7 +833,7 @@ namespace Achieve.UniCodex.Editor
             }
         }
 
-        private static string BuildCsvText(string[] columns, UniCodexCsvRow[] rows)
+        private static string BuildCsvText(string[] columns, UniAgentCsvRow[] rows)
         {
             var sb = new StringBuilder(1024);
             AppendCsvRow(sb, columns);
@@ -925,7 +925,7 @@ namespace Achieve.UniCodex.Editor
                 return Path.GetFullPath(normalized);
             }
 
-            return Path.GetFullPath(Path.Combine(UniCodexChatHelper.GetProjectRootPath(), normalized));
+            return Path.GetFullPath(Path.Combine(UniAgentChatHelper.GetProjectRootPath(), normalized));
         }
 
         private static string ToUnityAssetPath(string absolutePath)
@@ -935,7 +935,7 @@ namespace Achieve.UniCodex.Editor
                 return string.Empty;
             }
 
-            var root = Path.GetFullPath(UniCodexChatHelper.GetProjectRootPath()).Replace('\\', '/');
+            var root = Path.GetFullPath(UniAgentChatHelper.GetProjectRootPath()).Replace('\\', '/');
             if (!root.EndsWith("/", StringComparison.Ordinal))
             {
                 root += "/";
@@ -1146,7 +1146,7 @@ namespace Achieve.UniCodex.Editor
                 return false;
             }
 
-            var fromProjectRoot = Path.GetFullPath(Path.Combine(UniCodexChatHelper.GetProjectRootPath(), sceneRef));
+            var fromProjectRoot = Path.GetFullPath(Path.Combine(UniAgentChatHelper.GetProjectRootPath(), sceneRef));
             if (File.Exists(fromProjectRoot))
             {
                 scenePath = ToUnityScenePath(fromProjectRoot);
@@ -1155,7 +1155,7 @@ namespace Achieve.UniCodex.Editor
 
             if (sceneRef.StartsWith("Assets/", StringComparison.Ordinal))
             {
-                var assetFullPath = Path.GetFullPath(Path.Combine(UniCodexChatHelper.GetProjectRootPath(), sceneRef));
+                var assetFullPath = Path.GetFullPath(Path.Combine(UniAgentChatHelper.GetProjectRootPath(), sceneRef));
                 if (File.Exists(assetFullPath))
                 {
                     scenePath = sceneRef.Replace('\\', '/');
@@ -1168,7 +1168,7 @@ namespace Achieve.UniCodex.Editor
 
         private static string ToUnityScenePath(string filePath)
         {
-            var root = UniCodexChatHelper.GetProjectRootPath();
+            var root = UniAgentChatHelper.GetProjectRootPath();
             var normalizedRoot = Path.GetFullPath(root).Replace('\\', '/');
             if (!normalizedRoot.EndsWith("/", StringComparison.Ordinal))
             {
@@ -1296,18 +1296,18 @@ namespace Achieve.UniCodex.Editor
     }
 
     [Serializable]
-    internal sealed class UniCodexUnityActionRequest
+    internal sealed class UniAgentUnityActionRequest
     {
         /// <summary>대상 씬 이름 또는 경로입니다.</summary>
         public string scene;
         /// <summary>수정 적용 후 씬 저장 여부입니다.</summary>
         public bool saveScene = true;
         /// <summary>순서대로 적용할 액션 목록입니다.</summary>
-        public UniCodexUnityAction[] actions;
+        public UniAgentUnityAction[] actions;
     }
 
     [Serializable]
-    internal sealed class UniCodexUnityAction
+    internal sealed class UniAgentUnityAction
     {
         /// <summary>액션 타입(AddComponent, RemoveComponent, CreateSpriteObject, SavePrefabFromTarget, CreateCsvDataTable)입니다.</summary>
         public string type;
@@ -1358,7 +1358,7 @@ namespace Achieve.UniCodex.Editor
         /// <summary>CSV 컬럼 목록입니다. id 컬럼은 필수입니다.</summary>
         public string[] columns;
         /// <summary>CSV 데이터 행 목록입니다.</summary>
-        public UniCodexCsvRow[] rows;
+        public UniAgentCsvRow[] rows;
         /// <summary>CSV 저장 폴더입니다. 비어 있으면 기본 폴더를 사용합니다.</summary>
         public string csvFolder;
         /// <summary>동일 이름 CSV가 있을 때 덮어쓸지 여부입니다.</summary>
@@ -1366,7 +1366,7 @@ namespace Achieve.UniCodex.Editor
     }
 
     [Serializable]
-    internal sealed class UniCodexCsvRow
+    internal sealed class UniAgentCsvRow
     {
         /// <summary>CSV 한 행의 셀 값 배열입니다.</summary>
         public string[] values;

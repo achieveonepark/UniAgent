@@ -1,11 +1,11 @@
 using System;
 
-namespace Achieve.UniCodex
+namespace Achieve.UniAgent
 {
     /// <summary>
-    /// UniCodex 공통 오류 코드입니다.
+    /// UniAgent 공통 오류 코드입니다.
     /// </summary>
-    public enum UniCodexErrorCode
+    public enum UniAgentErrorCode
     {
         None = 0,
         NotConfigured = 1,
@@ -18,24 +18,24 @@ namespace Achieve.UniCodex
     }
 
     /// <summary>
-    /// UniCodex 일반 실행 결과 모델입니다.
+    /// UniAgent 일반 실행 결과 모델입니다.
     /// </summary>
     [Serializable]
-    public sealed class UniCodexResult
+    public sealed class UniAgentResult
     {
         /// <summary>실행 성공 여부입니다.</summary>
         public bool Success;
         /// <summary>사용자 노출용 메시지입니다.</summary>
         public string Message;
         /// <summary>표준 오류 코드입니다.</summary>
-        public UniCodexErrorCode ErrorCode = UniCodexErrorCode.None;
+        public UniAgentErrorCode ErrorCode = UniAgentErrorCode.None;
     }
 
     /// <summary>
-    /// UniCodex 로그인 요청 모델입니다.
+    /// UniAgent 로그인 요청 모델입니다.
     /// </summary>
     [Serializable]
-    public sealed class UniCodexLoginRequest
+    public sealed class UniAgentLoginRequest
     {
         /// <summary>
         /// 모바일/런타임에서는 백엔드 세션 토큰을 사용합니다.
@@ -50,10 +50,10 @@ namespace Achieve.UniCodex
     }
 
     /// <summary>
-    /// UniCodex 인증 상태 모델입니다.
+    /// UniAgent 인증 상태 모델입니다.
     /// </summary>
     [Serializable]
-    public sealed class UniCodexAuthState
+    public sealed class UniAgentAuthState
     {
         /// <summary>로그인 여부입니다.</summary>
         public bool IsLoggedIn;
@@ -66,10 +66,10 @@ namespace Achieve.UniCodex
     }
 
     /// <summary>
-    /// UniCodex 클라이언트 실행 요청 모델입니다.
+    /// UniAgent 클라이언트 실행 요청 모델입니다.
     /// </summary>
     [Serializable]
-    public sealed class UniCodexClientRunRequest
+    public sealed class UniAgentClientRunRequest
     {
         /// <summary>실행할 프롬프트입니다.</summary>
         public string Prompt;
@@ -86,10 +86,10 @@ namespace Achieve.UniCodex
     }
 
     /// <summary>
-    /// UniCodex 클라이언트 실행 결과 모델입니다.
+    /// UniAgent 클라이언트 실행 결과 모델입니다.
     /// </summary>
     [Serializable]
-    public sealed class UniCodexClientRunResult
+    public sealed class UniAgentClientRunResult
     {
         /// <summary>실행 성공 여부입니다.</summary>
         public bool Success;
@@ -104,6 +104,6 @@ namespace Achieve.UniCodex
         /// <summary>총 토큰 수(선택)입니다.</summary>
         public int? TotalTokens;
         /// <summary>오류 코드입니다.</summary>
-        public UniCodexErrorCode ErrorCode = UniCodexErrorCode.None;
+        public UniAgentErrorCode ErrorCode = UniAgentErrorCode.None;
     }
 }

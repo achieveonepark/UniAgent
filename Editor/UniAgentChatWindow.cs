@@ -5,19 +5,19 @@ using System.Reflection;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
-using Achieve.UniCodex;
+using Achieve.UniAgent;
 using UnityEditor;
 using UnityEditor.Compilation;
 using UnityEngine;
 using UnityEngine.UIElements;
 
-namespace Achieve.UniCodex.Editor
+namespace Achieve.UniAgent.Editor
 {
     /// <summary>
     /// Codex CLI용 UI Toolkit 채팅 창입니다.
     /// 뷰 상태, 렌더링, 에디터 상호작용을 담당합니다.
     /// </summary>
-    public sealed class UniCodexChatWindow : EditorWindow
+    public sealed class UniAgentChatWindow : EditorWindow
     {
         private static readonly Regex MarkdownLinkRegex = new Regex("\\[([^\\]]+)\\]\\(([^)]+)\\)", RegexOptions.Compiled);
         private static readonly Regex MarkdownBoldAsteriskRegex = new Regex("(?<!\\*)\\*\\*(.+?)\\*\\*(?!\\*)", RegexOptions.Compiled);
@@ -26,13 +26,13 @@ namespace Achieve.UniCodex.Editor
         private static readonly Regex MarkdownItalicUnderscoreRegex = new Regex("(?<!_)_(?!_)(.+?)(?<!_)_(?!_)", RegexOptions.Compiled);
         private static readonly Regex MarkdownCodeRegex = new Regex("`([^`\\n]+)`", RegexOptions.Compiled);
         private static readonly Regex MentionPathRegex = new Regex("@([^\\s@]+)", RegexOptions.Compiled);
-        private static readonly Queue<UniCodexDeferredRunResult> DeferredRunResults = new Queue<UniCodexDeferredRunResult>();
+        private static readonly Queue<UniAgentDeferredRunResult> DeferredRunResults = new Queue<UniAgentDeferredRunResult>();
         private static readonly object DeferredRunLock = new object();
         private static readonly object ActiveRunCountLock = new object();
         private static int ActiveRunCount;
 
-        private readonly List<UniCodexChatMessage> _messages = new List<UniCodexChatMessage>();
-        private readonly List<UniCodexChatSessionInfo> _chatSessions = new List<UniCodexChatSessionInfo>();
+        private readonly List<UniAgentChatMessage> _messages = new List<UniAgentChatMessage>();
+        private readonly List<UniAgentChatSessionInfo> _chatSessions = new List<UniAgentChatSessionInfo>();
         private readonly List<string> _sessionOptionLabels = new List<string>();
         private readonly List<string> _sessionOptionIds = new List<string>();
         private readonly List<string> _projectFileIndex = new List<string>();
@@ -54,27 +54,33 @@ namespace Achieve.UniCodex.Editor
         private Button _planModeButton;
         private Button _buildModeButton;
         private Button _diffModeButton;
-        private UniCodexTokenGaugeElement _tokenGauge;
+        private UniAgentTokenGaugeElement _tokenGauge;
         private VisualElement _tokenGaugeHost;
         private Label _tokenGaugePercentLabel;
         private VisualElement _availabilityDot;
         private VisualElement _settingsStateDot;
         private VisualElement _settingsPanel;
         private VisualElement _mentionSuggestionPanel;
+        private VisualElement _codexModelRow;
+        private VisualElement _claudeModelRow;
+        private VisualElement _reasoningRow;
 
         // Persisted/runtime options.
-        private string _cliPath = UniCodexCliConstants.DefaultCliPath;
+        private string _cliPath = UniAgentCliConstants.DefaultCliPath;
+        private string _claudeCliPath = UniAgentCliConstants.DefaultClaudeCliPath;
         private readonly bool _useProjectCodexHome = false;
-        private readonly string _projectCodexHomeRelative = UniCodexCliConstants.DefaultCodexHomeRelative;
+        private readonly string _projectCodexHomeRelative = UniAgentCliConstants.DefaultCodexHomeRelative;
         private readonly bool _fullAuto = true;
-        private string _markdownFiles = UniCodexCliConstants.DefaultMarkdownFiles;
-        private int _maxMarkdownChars = UniCodexCliConstants.DefaultMaxMarkdownChars;
+        private string _markdownFiles = UniAgentCliConstants.DefaultMarkdownFiles;
+        private int _maxMarkdownChars = UniAgentCliConstants.DefaultMaxMarkdownChars;
         private bool _disableDomainReloadOnPlay = true;
         private bool _disableSceneReloadOnPlay;
         private bool _manualRefreshMode = true;
         private bool _buildDiffPreviewMode;
         private string _selectedModel = DefaultModel;
         private string _selectedReasoningEffort = DefaultReasoningEffort;
+        private string _selectedProvider = DefaultProvider;
+        private string _selectedClaudeModel = DefaultClaudeModel;
 
         // UI/session state.
         private bool _isBusy;
@@ -89,11 +95,11 @@ namespace Achieve.UniCodex.Editor
         private string _lastTokenUsageText = "-";
         private ChatMode _chatMode = ChatMode.Build;
         private int _sessionTokenUsed;
-        private int _sessionTokenBudget = UniCodexCliConstants.DefaultSessionTokenBudget;
+        private int _sessionTokenBudget = UniAgentCliConstants.DefaultSessionTokenBudget;
         private readonly Queue<int> _recentTurnTokenCosts = new Queue<int>();
 
         // Pending assistant animation state.
-        private UniCodexChatMessage _pendingAssistantMessage;
+        private UniAgentChatMessage _pendingAssistantMessage;
         private IVisualElementScheduledItem _pendingAnimationItem;
         private int _pendingDotCount;
         private string _pendingProgressText = "Preparing request";
@@ -139,6 +145,8 @@ namespace Achieve.UniCodex.Editor
         private const string BaseTextFieldInputClassName = "unity-base-text-field__input";
         private const string DefaultModel = "gpt-5.3-codex";
         private const string DefaultReasoningEffort = "xhigh";
+        private const string DefaultProvider = "Codex";
+        private const string DefaultClaudeModel = "claude-sonnet-4-6";
         private static readonly Color UiTextPrimary = new Color(0.93f, 0.95f, 0.98f, 1f);
         private static readonly Color UiTextSecondary = new Color(0.73f, 0.78f, 0.86f, 1f);
         private static readonly Color UiPanelBackground = new Color(0.10f, 0.13f, 0.18f, 0.95f);
@@ -151,10 +159,21 @@ namespace Achieve.UniCodex.Editor
         private static readonly Color UiPrimaryButtonBorder = new Color(0.29f, 0.59f, 1f, 1f);
         private static readonly Color UiDangerButton = new Color(0.60f, 0.23f, 0.23f, 1f);
         private static readonly Color UiDangerButtonBorder = new Color(0.76f, 0.33f, 0.33f, 1f);
+        private static readonly List<string> ProviderOptions = new List<string>
+        {
+            "Codex",
+            "Claude Code"
+        };
         private static readonly List<string> ModelOptions = new List<string>
         {
             "gpt-5.3-codex",
             "gpt-5.2-codex"
+        };
+        private static readonly List<string> ClaudeModelOptions = new List<string>
+        {
+            "claude-opus-4-6",
+            "claude-sonnet-4-6",
+            "claude-haiku-4-5-20251001"
         };
         private static readonly List<string> ReasoningEffortOptions = new List<string>
         {
@@ -169,11 +188,11 @@ namespace Achieve.UniCodex.Editor
         /// <summary>
         /// Codex 채팅 창을 엽니다.
         /// </summary>
-        [MenuItem("Tools/Codex/Codex Chat")]
+        [MenuItem("Tools/UniAgent/UniAgent Chat")]
         public static void OpenWindow()
         {
-            var window = GetWindow<UniCodexChatWindow>();
-            window.titleContent = new GUIContent("Codex Chat");
+            var window = GetWindow<UniAgentChatWindow>();
+            window.titleContent = new GUIContent("UniAgent Chat");
             window.minSize = new Vector2(600f, 420f);
             window.Show();
         }
@@ -188,7 +207,7 @@ namespace Achieve.UniCodex.Editor
             {
                 _isBusy = true;
                 _statusText = "Codex is thinking...";
-                UniCodexToolbarShortcut.SetBusyState();
+                UniAgentToolbarShortcut.SetBusyState();
             }
 
             ApplyDeferredRunResults();
@@ -263,7 +282,7 @@ namespace Achieve.UniCodex.Editor
             left.style.alignItems = Align.Center;
             left.style.flexShrink = 1f;
 
-            var title = new Label("Codex Chat");
+            var title = new Label("UniAgent Chat");
             ApplyPreferredFont(title);
             title.style.unityFontStyleAndWeight = FontStyle.Bold;
             title.style.fontSize = 14f;
@@ -401,11 +420,39 @@ namespace Achieve.UniCodex.Editor
 
             panel.Add(loginRow);
 
-            var modelRow = new VisualElement();
-            modelRow.style.flexDirection = FlexDirection.Row;
-            modelRow.style.alignItems = Align.Center;
-            modelRow.style.marginTop = 8f;
-            modelRow.style.marginBottom = 4f;
+            // ── Provider 선택 ─────────────────────────────────────────────
+            var providerRow = new VisualElement();
+            providerRow.style.flexDirection = FlexDirection.Row;
+            providerRow.style.alignItems = Align.Center;
+            providerRow.style.marginTop = 8f;
+            providerRow.style.marginBottom = 4f;
+
+            var providerLabel = new Label("Provider");
+            ApplyPreferredFont(providerLabel);
+            providerLabel.style.color = UiTextSecondary;
+            providerLabel.style.width = 90f;
+            providerLabel.style.minWidth = 90f;
+            providerLabel.style.marginRight = 6f;
+            providerRow.Add(providerLabel);
+
+            var providerIndex = GetOptionIndex(_selectedProvider, ProviderOptions, DefaultProvider);
+            var providerPopup = new PopupField<string>(ProviderOptions, providerIndex);
+            providerPopup.style.flexGrow = 1f;
+            ApplyPopupFieldStyle(providerPopup, 24f);
+            providerPopup.RegisterValueChangedCallback(evt =>
+            {
+                _selectedProvider = NormalizeOption(evt.newValue, ProviderOptions, DefaultProvider);
+                SavePrefs();
+                UpdateProviderDependentUI();
+            });
+            providerRow.Add(providerPopup);
+            panel.Add(providerRow);
+
+            // ── Codex 모델 행 ─────────────────────────────────────────────
+            _codexModelRow = new VisualElement();
+            _codexModelRow.style.flexDirection = FlexDirection.Row;
+            _codexModelRow.style.alignItems = Align.Center;
+            _codexModelRow.style.marginBottom = 4f;
 
             var modelLabel = new Label("Model");
             ApplyPreferredFont(modelLabel);
@@ -413,7 +460,7 @@ namespace Achieve.UniCodex.Editor
             modelLabel.style.width = 90f;
             modelLabel.style.minWidth = 90f;
             modelLabel.style.marginRight = 6f;
-            modelRow.Add(modelLabel);
+            _codexModelRow.Add(modelLabel);
 
             var modelIndex = GetOptionIndex(_selectedModel, ModelOptions, DefaultModel);
             var modelPopup = new PopupField<string>(ModelOptions, modelIndex);
@@ -424,12 +471,39 @@ namespace Achieve.UniCodex.Editor
                 _selectedModel = NormalizeOption(evt.newValue, ModelOptions, DefaultModel);
                 SavePrefs();
             });
-            modelRow.Add(modelPopup);
-            panel.Add(modelRow);
+            _codexModelRow.Add(modelPopup);
+            panel.Add(_codexModelRow);
 
-            var reasoningRow = new VisualElement();
-            reasoningRow.style.flexDirection = FlexDirection.Row;
-            reasoningRow.style.alignItems = Align.Center;
+            // ── Claude 모델 행 ────────────────────────────────────────────
+            _claudeModelRow = new VisualElement();
+            _claudeModelRow.style.flexDirection = FlexDirection.Row;
+            _claudeModelRow.style.alignItems = Align.Center;
+            _claudeModelRow.style.marginBottom = 4f;
+
+            var claudeModelLabel = new Label("Model");
+            ApplyPreferredFont(claudeModelLabel);
+            claudeModelLabel.style.color = UiTextSecondary;
+            claudeModelLabel.style.width = 90f;
+            claudeModelLabel.style.minWidth = 90f;
+            claudeModelLabel.style.marginRight = 6f;
+            _claudeModelRow.Add(claudeModelLabel);
+
+            var claudeModelIndex = GetOptionIndex(_selectedClaudeModel, ClaudeModelOptions, DefaultClaudeModel);
+            var claudeModelPopup = new PopupField<string>(ClaudeModelOptions, claudeModelIndex);
+            claudeModelPopup.style.flexGrow = 1f;
+            ApplyPopupFieldStyle(claudeModelPopup, 24f);
+            claudeModelPopup.RegisterValueChangedCallback(evt =>
+            {
+                _selectedClaudeModel = NormalizeOption(evt.newValue, ClaudeModelOptions, DefaultClaudeModel);
+                SavePrefs();
+            });
+            _claudeModelRow.Add(claudeModelPopup);
+            panel.Add(_claudeModelRow);
+
+            // ── Reasoning (Codex 전용) ────────────────────────────────────
+            _reasoningRow = new VisualElement();
+            _reasoningRow.style.flexDirection = FlexDirection.Row;
+            _reasoningRow.style.alignItems = Align.Center;
 
             var reasoningLabel = new Label("Reasoning");
             ApplyPreferredFont(reasoningLabel);
@@ -437,7 +511,7 @@ namespace Achieve.UniCodex.Editor
             reasoningLabel.style.width = 90f;
             reasoningLabel.style.minWidth = 90f;
             reasoningLabel.style.marginRight = 6f;
-            reasoningRow.Add(reasoningLabel);
+            _reasoningRow.Add(reasoningLabel);
 
             var reasoningIndex = GetOptionIndex(_selectedReasoningEffort, ReasoningEffortOptions, DefaultReasoningEffort);
             var reasoningPopup = new PopupField<string>(ReasoningEffortOptions, reasoningIndex);
@@ -448,9 +522,10 @@ namespace Achieve.UniCodex.Editor
                 _selectedReasoningEffort = NormalizeOption(evt.newValue, ReasoningEffortOptions, DefaultReasoningEffort);
                 SavePrefs();
             });
-            reasoningRow.Add(reasoningPopup);
-            panel.Add(reasoningRow);
+            _reasoningRow.Add(reasoningPopup);
+            panel.Add(_reasoningRow);
 
+            UpdateProviderDependentUI();
             return panel;
         }
 
@@ -517,6 +592,25 @@ namespace Achieve.UniCodex.Editor
 
             var isOpen = _settingsPanel.style.display != DisplayStyle.None;
             _settingsPanel.style.display = isOpen ? DisplayStyle.None : DisplayStyle.Flex;
+        }
+
+        private void UpdateProviderDependentUI()
+        {
+            var isClaudeProvider = _selectedProvider == "Claude Code";
+            if (_codexModelRow != null)
+            {
+                _codexModelRow.style.display = isClaudeProvider ? DisplayStyle.None : DisplayStyle.Flex;
+            }
+
+            if (_claudeModelRow != null)
+            {
+                _claudeModelRow.style.display = isClaudeProvider ? DisplayStyle.Flex : DisplayStyle.None;
+            }
+
+            if (_reasoningRow != null)
+            {
+                _reasoningRow.style.display = isClaudeProvider ? DisplayStyle.None : DisplayStyle.Flex;
+            }
         }
 
         private void BuildNewSessionPopupPanel()
@@ -829,7 +923,7 @@ namespace Achieve.UniCodex.Editor
             return safe.ToString();
         }
 
-        private void AccumulateSessionTokens(UniCodexRunResult result)
+        private void AccumulateSessionTokens(UniAgentRunResult result)
         {
             var turnCost = ComputeTurnTokenCost(result);
             if (turnCost <= 0)
@@ -857,7 +951,7 @@ namespace Achieve.UniCodex.Editor
             }
         }
 
-        private static int ComputeTurnTokenCost(UniCodexRunResult result)
+        private static int ComputeTurnTokenCost(UniAgentRunResult result)
         {
             if (result == null)
             {
@@ -1015,7 +1109,7 @@ namespace Achieve.UniCodex.Editor
             _tokenGaugeHost.style.borderBottomRightRadius = hostSize * 0.5f;
             _tokenGaugeHost.style.flexShrink = 0f;
 
-            _tokenGauge = new UniCodexTokenGaugeElement();
+            _tokenGauge = new UniAgentTokenGaugeElement();
             _tokenGauge.style.width = gaugeSize;
             _tokenGauge.style.height = gaugeSize;
             _tokenGauge.pickingMode = PickingMode.Ignore;
@@ -1691,7 +1785,7 @@ namespace Achieve.UniCodex.Editor
                 }
             }
 
-            var projectRoot = UniCodexChatHelper.GetProjectRootPath().Replace('\\', '/');
+            var projectRoot = UniAgentChatHelper.GetProjectRootPath().Replace('\\', '/');
             if (Path.IsPathRooted(rawPath))
             {
                 var normalizedAbsolute = Path.GetFullPath(rawPath).Replace('\\', '/');
@@ -1762,7 +1856,7 @@ namespace Achieve.UniCodex.Editor
             }).ContinueWith(task =>
             {
                 var state = task.IsFaulted
-                    ? new UniCodexEnvironmentState
+                    ? new UniAgentEnvironmentState
                     {
                         Installed = false,
                         LoggedIn = false,
@@ -1777,11 +1871,21 @@ namespace Achieve.UniCodex.Editor
                     _codexLoggedIn = state.LoggedIn;
                     _codexVersionText = state.VersionText;
                     _loginStatusText = state.LoginText;
-                    if (!string.IsNullOrWhiteSpace(state.ResolvedCliPath)
-                        && !string.Equals(_cliPath, state.ResolvedCliPath, StringComparison.Ordinal))
+                    if (!string.IsNullOrWhiteSpace(state.ResolvedCliPath))
                     {
-                        _cliPath = state.ResolvedCliPath;
-                        SavePrefs();
+                        if (_selectedProvider == "Claude Code")
+                        {
+                            if (!string.Equals(_claudeCliPath, state.ResolvedCliPath, StringComparison.Ordinal))
+                            {
+                                _claudeCliPath = state.ResolvedCliPath;
+                                SavePrefs();
+                            }
+                        }
+                        else if (!string.Equals(_cliPath, state.ResolvedCliPath, StringComparison.Ordinal))
+                        {
+                            _cliPath = state.ResolvedCliPath;
+                            SavePrefs();
+                        }
                     }
 
                     UpdateEnvironmentUI();
@@ -1811,7 +1915,7 @@ namespace Achieve.UniCodex.Editor
             {
                 var service = CreateCliService();
                 var loginResult = service.QueryLoginStatus();
-                return new UniCodexEnvironmentState
+                return new UniAgentEnvironmentState
                 {
                     Installed = _codexInstalled,
                     LoggedIn = loginResult.Success,
@@ -1821,7 +1925,7 @@ namespace Achieve.UniCodex.Editor
             }).ContinueWith(task =>
             {
                 var state = task.IsFaulted
-                    ? new UniCodexEnvironmentState
+                    ? new UniAgentEnvironmentState
                     {
                         Installed = _codexInstalled,
                         LoggedIn = false,
@@ -1847,19 +1951,23 @@ namespace Achieve.UniCodex.Editor
                 return;
             }
 
+            var isClaudeProvider = _selectedProvider == "Claude Code";
+            var cliDisplayName = isClaudeProvider ? "Claude Code CLI" : "Codex CLI";
+            var loginTerminalCmd = isClaudeProvider ? "claude auth login" : "codex login --device-auth";
+
             if (!_codexInstalled)
             {
-                AddMessage(ChatRole.Error, "Codex CLI was not found. Install it, then click Refresh in Settings.");
+                AddMessage(ChatRole.Error, $"{cliDisplayName} was not found. Install it, then click Refresh in Settings.");
                 return;
             }
 
-            AddMessage(ChatRole.System, "Starting Codex login. Complete browser/device auth, then click Refresh in Settings.");
-            SetStatus("Starting device login...");
-            ConfigureUniCodexClient();
-            UniCodex.Client.LoginAsync(new UniCodexLoginRequest { UseDeviceAuth = true }).ContinueWith(task =>
+            AddMessage(ChatRole.System, $"Starting {cliDisplayName} login. Complete browser auth, then click Refresh in Settings.");
+            SetStatus("Starting login...");
+            ConfigureUniAgentClient();
+            UniAgent.Client.LoginAsync(new UniAgentLoginRequest { UseDeviceAuth = true }).ContinueWith(task =>
             {
                 var result = task.IsFaulted
-                    ? new UniCodexCommandResult
+                    ? new UniAgentCommandResult
                     {
                         Success = false,
                         Message = task.Exception?.GetBaseException().Message ?? "Login failed."
@@ -1870,11 +1978,11 @@ namespace Achieve.UniCodex.Editor
                 {
                     if (result.Success)
                     {
-                        AddMessage(ChatRole.System, "Codex login completed.");
+                        AddMessage(ChatRole.System, $"{cliDisplayName} login completed.");
                     }
                     else
                     {
-                        AddMessage(ChatRole.Error, $"Codex login failed: {result.Message}\nYou can also run `codex login --device-auth` in terminal.");
+                        AddMessage(ChatRole.Error, $"{cliDisplayName} login failed: {result.Message}\nYou can also run `{loginTerminalCmd}` in terminal.");
                     }
 
                     SetStatus("Ready");
@@ -1891,11 +1999,11 @@ namespace Achieve.UniCodex.Editor
             }
 
             SetBusy(true, "Logging out...");
-            ConfigureUniCodexClient();
-            UniCodex.Client.LogoutAsync().ContinueWith(task =>
+            ConfigureUniAgentClient();
+            UniAgent.Client.LogoutAsync().ContinueWith(task =>
             {
                 var result = task.IsFaulted
-                    ? new UniCodexCommandResult
+                    ? new UniAgentCommandResult
                     {
                         Success = false,
                         Message = task.Exception?.GetBaseException().Message ?? "Logout failed."
@@ -1964,13 +2072,15 @@ namespace Achieve.UniCodex.Editor
 
             if (!_codexInstalled)
             {
-                AddMessage(ChatRole.Error, "Codex CLI is not installed. Install it, then click Refresh in Settings.");
+                var missingCli = _selectedProvider == "Claude Code" ? "Claude Code CLI" : "Codex CLI";
+                AddMessage(ChatRole.Error, $"{missingCli} is not installed. Install it, then click Refresh in Settings.");
                 return;
             }
 
             if (!_codexLoggedIn)
             {
-                AddMessage(ChatRole.Error, "Codex login is required. Click Login (Device) in Settings.");
+                var loginCmd = _selectedProvider == "Claude Code" ? "claude auth login" : "codex login --device-auth";
+                AddMessage(ChatRole.Error, $"Login is required. Click Login in Settings or run `{loginCmd}` in terminal.");
                 return;
             }
 
@@ -1991,10 +2101,10 @@ namespace Achieve.UniCodex.Editor
             SetBusy(true, diffPreviewThisTurn ? "Codex is generating diff preview..." : "Codex is thinking...");
             IncrementActiveRuns();
 
-            RunThroughUniCodexClient(prompt, diffPreviewThisTurn ? false : (bool?)null).ContinueWith(task =>
+            RunThroughUniAgentClient(prompt, diffPreviewThisTurn ? false : (bool?)null).ContinueWith(task =>
             {
                 var result = task.IsFaulted
-                    ? UniCodexRunResult.FromError(task.Exception?.GetBaseException().Message ?? "Unknown execution error")
+                    ? UniAgentRunResult.FromError(task.Exception?.GetBaseException().Message ?? "Unknown execution error")
                     : task.Result;
                 DecrementActiveRuns();
 
@@ -2027,7 +2137,7 @@ namespace Achieve.UniCodex.Editor
             }
 
             sb.AppendLine();
-            sb.Append(UniCodexChatHelper.BuildPrompt(
+            sb.Append(UniAgentChatHelper.BuildPrompt(
                 userText,
                 _markdownFiles,
                 _maxMarkdownChars,
@@ -2071,7 +2181,7 @@ namespace Achieve.UniCodex.Editor
             return sb.ToString();
         }
 
-        private void HandleCodexResult(UniCodexRunResult result, bool diffPreviewTurn)
+        private void HandleCodexResult(UniAgentRunResult result, bool diffPreviewTurn)
         {
             if (!string.IsNullOrWhiteSpace(result.ThreadId))
             {
@@ -2079,7 +2189,7 @@ namespace Achieve.UniCodex.Editor
                 SavePrefs();
             }
 
-            var tokenSummary = UniCodexCliService.BuildTokenSummary(result);
+            var tokenSummary = UniAgentCliService.BuildTokenSummary(result);
             if (!string.IsNullOrWhiteSpace(tokenSummary))
             {
                 _lastTokenUsageText = tokenSummary;
@@ -2113,7 +2223,7 @@ namespace Achieve.UniCodex.Editor
             SetBusy(false, "Codex execution failed");
         }
 
-        private static void DispatchRunResult(UniCodexRunResult result, bool diffPreviewTurn)
+        private static void DispatchRunResult(UniAgentRunResult result, bool diffPreviewTurn)
         {
             var window = TryGetAnyChatWindow();
             if (window != null)
@@ -2124,7 +2234,7 @@ namespace Achieve.UniCodex.Editor
 
             lock (DeferredRunLock)
             {
-                DeferredRunResults.Enqueue(new UniCodexDeferredRunResult
+                DeferredRunResults.Enqueue(new UniAgentDeferredRunResult
                 {
                     Result = result,
                     DiffPreviewTurn = diffPreviewTurn
@@ -2133,11 +2243,11 @@ namespace Achieve.UniCodex.Editor
 
             if (HasActiveRuns())
             {
-                UniCodexToolbarShortcut.SetBusyState();
+                UniAgentToolbarShortcut.SetBusyState();
             }
             else
             {
-                UniCodexToolbarShortcut.SetCompleteState();
+                UniAgentToolbarShortcut.SetCompleteState();
             }
         }
 
@@ -2145,7 +2255,7 @@ namespace Achieve.UniCodex.Editor
         {
             while (true)
             {
-                UniCodexDeferredRunResult pending;
+                UniAgentDeferredRunResult pending;
                 lock (DeferredRunLock)
                 {
                     if (DeferredRunResults.Count <= 0)
@@ -2164,13 +2274,13 @@ namespace Achieve.UniCodex.Editor
         {
             if (string.IsNullOrWhiteSpace(responseText))
             {
-                UniCodexDiffPreviewWindow.ShowDiff("Diff Preview", "NO_CHANGES", RequestDiffRefinementAsync);
+                UniAgentDiffPreviewWindow.ShowDiff("Diff Preview", "NO_CHANGES", RequestDiffRefinementAsync);
                 return;
             }
 
             if (string.Equals(responseText.Trim(), "NO_CHANGES", StringComparison.OrdinalIgnoreCase))
             {
-                UniCodexDiffPreviewWindow.ShowDiff("Diff Preview", "NO_CHANGES", RequestDiffRefinementAsync);
+                UniAgentDiffPreviewWindow.ShowDiff("Diff Preview", "NO_CHANGES", RequestDiffRefinementAsync);
                 return;
             }
 
@@ -2183,16 +2293,16 @@ namespace Achieve.UniCodex.Editor
 
             var sessionLabel = _sessionPopup?.value;
             var title = string.IsNullOrWhiteSpace(sessionLabel) ? "Diff Preview" : $"Diff Preview - {sessionLabel}";
-            UniCodexDiffPreviewWindow.ShowDiff(title, diffText, RequestDiffRefinementAsync);
+            UniAgentDiffPreviewWindow.ShowDiff(title, diffText, RequestDiffRefinementAsync);
         }
 
-        private Task<UniCodexRunResult> RequestDiffRefinementAsync(string currentDiff, string refineRequest)
+        private Task<UniAgentRunResult> RequestDiffRefinementAsync(string currentDiff, string refineRequest)
         {
             var prompt = BuildDiffRefinementPrompt(currentDiff, refineRequest);
-            return RunThroughUniCodexClient(prompt, false).ContinueWith(task =>
+            return RunThroughUniAgentClient(prompt, false).ContinueWith(task =>
             {
                 var result = task.IsFaulted
-                    ? UniCodexRunResult.FromError(task.Exception?.GetBaseException().Message ?? "Diff refine execution error")
+                    ? UniAgentRunResult.FromError(task.Exception?.GetBaseException().Message ?? "Diff refine execution error")
                     : task.Result;
 
                 EditorApplication.delayCall += () => ApplyCodexResultRuntimeState(result);
@@ -2200,20 +2310,20 @@ namespace Achieve.UniCodex.Editor
             });
         }
 
-        internal Task<UniCodexRunResult> RequestDiffRefinementFromPreview(string currentDiff, string refineRequest)
+        internal Task<UniAgentRunResult> RequestDiffRefinementFromPreview(string currentDiff, string refineRequest)
         {
             return RequestDiffRefinementAsync(currentDiff, refineRequest);
         }
 
-        internal static Func<string, string, Task<UniCodexRunResult>> TryGetDiffRefineHandler()
+        internal static Func<string, string, Task<UniAgentRunResult>> TryGetDiffRefineHandler()
         {
             var window = TryGetAnyChatWindow();
             return window == null ? null : window.RequestDiffRefinementFromPreview;
         }
 
-        private static UniCodexChatWindow TryGetAnyChatWindow()
+        private static UniAgentChatWindow TryGetAnyChatWindow()
         {
-            var windows = Resources.FindObjectsOfTypeAll<UniCodexChatWindow>();
+            var windows = Resources.FindObjectsOfTypeAll<UniAgentChatWindow>();
             if (windows == null || windows.Length == 0)
             {
                 return null;
@@ -2286,7 +2396,7 @@ namespace Achieve.UniCodex.Editor
             return sb.ToString();
         }
 
-        private void ApplyCodexResultRuntimeState(UniCodexRunResult result)
+        private void ApplyCodexResultRuntimeState(UniAgentRunResult result)
         {
             if (result == null)
             {
@@ -2299,7 +2409,7 @@ namespace Achieve.UniCodex.Editor
                 SavePrefs();
             }
 
-            var tokenSummary = UniCodexCliService.BuildTokenSummary(result);
+            var tokenSummary = UniAgentCliService.BuildTokenSummary(result);
             if (!string.IsNullOrWhiteSpace(tokenSummary))
             {
                 _lastTokenUsageText = tokenSummary;
@@ -2514,7 +2624,7 @@ namespace Achieve.UniCodex.Editor
 
         private void ApplyPendingUnityActionsFromBridge()
         {
-            if (!UniCodexUnityEditorHelper.TryApplyPendingActions(out var summary))
+            if (!UniAgentUnityEditorHelper.TryApplyPendingActions(out var summary))
             {
                 return;
             }
@@ -2655,9 +2765,9 @@ namespace Achieve.UniCodex.Editor
         // Chat rendering
         // -------------------------
 
-        private UniCodexChatMessage AddMessage(ChatRole role, string text, string tokenSummary = null, bool isLoading = false)
+        private UniAgentChatMessage AddMessage(ChatRole role, string text, string tokenSummary = null, bool isLoading = false)
         {
-            var message = new UniCodexChatMessage
+            var message = new UniAgentChatMessage
             {
                 Role = role,
                 Text = text,
@@ -2677,7 +2787,7 @@ namespace Achieve.UniCodex.Editor
             return message;
         }
 
-        private void StartPendingAssistantMessage(UniCodexChatMessage existingMessage = null)
+        private void StartPendingAssistantMessage(UniAgentChatMessage existingMessage = null)
         {
             StopPendingAssistantAnimation();
             lock (_progressUpdateLock)
@@ -2837,7 +2947,7 @@ namespace Achieve.UniCodex.Editor
             ScrollToBottom();
         }
 
-        private UniCodexChatMessage FindLatestLoadingMessage()
+        private UniAgentChatMessage FindLatestLoadingMessage()
         {
             for (var i = _messages.Count - 1; i >= 0; i--)
             {
@@ -2877,7 +2987,7 @@ namespace Achieve.UniCodex.Editor
             _pendingAssistantMessage = null;
             StopPendingAssistantAnimation();
             _isBusy = false;
-            UniCodexToolbarShortcut.SetCompleteState();
+            UniAgentToolbarShortcut.SetCompleteState();
             SetStatus("Ready");
         }
 
@@ -2921,7 +3031,7 @@ namespace Achieve.UniCodex.Editor
             ScrollToBottom();
         }
 
-        private void AddMessageToView(UniCodexChatMessage message)
+        private void AddMessageToView(UniAgentChatMessage message)
         {
             if (_chatScrollView == null)
             {
@@ -2981,7 +3091,7 @@ namespace Achieve.UniCodex.Editor
             _chatScrollView.Add(row);
         }
 
-        private void AddMessageContent(VisualElement bubble, UniCodexChatMessage message)
+        private void AddMessageContent(VisualElement bubble, UniAgentChatMessage message)
         {
             if (message == null)
             {
@@ -3246,7 +3356,7 @@ namespace Achieve.UniCodex.Editor
             SaveActiveSessionSnapshot();
 
             var normalizedName = NormalizeSessionName(preferredName);
-            var session = new UniCodexChatSessionInfo
+            var session = new UniAgentChatSessionInfo
             {
                 Id = Guid.NewGuid().ToString("N"),
                 Name = string.IsNullOrWhiteSpace(normalizedName) ? $"Session {_chatSessions.Count + 1}" : normalizedName
@@ -3341,7 +3451,7 @@ namespace Achieve.UniCodex.Editor
 
             if (_sessionOptionLabels.Count == 0)
             {
-                var fallback = new UniCodexChatSessionInfo
+                var fallback = new UniAgentChatSessionInfo
                 {
                     Id = Guid.NewGuid().ToString("N"),
                     Name = "Session 1"
@@ -3380,7 +3490,7 @@ namespace Achieve.UniCodex.Editor
                 return;
             }
 
-            var session = new UniCodexChatSessionInfo
+            var session = new UniAgentChatSessionInfo
             {
                 Id = Guid.NewGuid().ToString("N"),
                 Name = "Session 1"
@@ -3394,7 +3504,7 @@ namespace Achieve.UniCodex.Editor
                     continue;
                 }
 
-                session.Messages.Add(new UniCodexChatHistoryItem
+                session.Messages.Add(new UniAgentChatHistoryItem
                 {
                     Role = (int)message.Role,
                     Text = message.Text,
@@ -3414,7 +3524,7 @@ namespace Achieve.UniCodex.Editor
             _activeChatSessionId = session.Id;
         }
 
-        private UniCodexChatSessionInfo GetActiveChatSession()
+        private UniAgentChatSessionInfo GetActiveChatSession()
         {
             if (string.IsNullOrWhiteSpace(_activeChatSessionId))
             {
@@ -3450,7 +3560,7 @@ namespace Achieve.UniCodex.Editor
                     continue;
                 }
 
-                active.Messages.Add(new UniCodexChatHistoryItem
+                active.Messages.Add(new UniAgentChatHistoryItem
                 {
                     Role = (int)message.Role,
                     Text = message.Text,
@@ -3460,7 +3570,7 @@ namespace Achieve.UniCodex.Editor
             }
         }
 
-        private void ApplySessionToRuntime(UniCodexChatSessionInfo session)
+        private void ApplySessionToRuntime(UniAgentChatSessionInfo session)
         {
             if (session == null)
             {
@@ -3468,7 +3578,7 @@ namespace Achieve.UniCodex.Editor
             }
 
             _messages.Clear();
-            var sourceMessages = session.Messages ?? new List<UniCodexChatHistoryItem>();
+            var sourceMessages = session.Messages ?? new List<UniAgentChatHistoryItem>();
             for (var i = 0; i < sourceMessages.Count; i++)
             {
                 var item = sourceMessages[i];
@@ -3477,7 +3587,7 @@ namespace Achieve.UniCodex.Editor
                     continue;
                 }
 
-                _messages.Add(new UniCodexChatMessage
+                _messages.Add(new UniAgentChatMessage
                 {
                     Role = ParseChatRole(item.Role),
                     Text = item.Text ?? string.Empty,
@@ -3509,17 +3619,17 @@ namespace Achieve.UniCodex.Editor
             _isBusy = busy;
             if (busy)
             {
-                UniCodexToolbarShortcut.SetBusyState();
+                UniAgentToolbarShortcut.SetBusyState();
             }
             else if (wasBusy)
             {
                 if (HasActiveRuns())
                 {
-                    UniCodexToolbarShortcut.SetBusyState();
+                    UniAgentToolbarShortcut.SetBusyState();
                 }
                 else
                 {
-                    UniCodexToolbarShortcut.SetCompleteState();
+                    UniAgentToolbarShortcut.SetCompleteState();
                 }
             }
 
@@ -3609,7 +3719,7 @@ namespace Achieve.UniCodex.Editor
 
             if (!_codexInstalled)
             {
-                return "Missing Codex";
+                return _selectedProvider == "Claude Code" ? "Missing Claude Code" : "Missing Codex";
             }
 
             if (!_codexLoggedIn)
@@ -3663,10 +3773,13 @@ namespace Achieve.UniCodex.Editor
 
         private void LoadPrefs()
         {
-            var prefix = UniCodexCliConstants.PrefPrefix;
-            _cliPath = EditorPrefs.GetString(prefix + "CliPath", UniCodexCliConstants.DefaultCliPath);
-            _markdownFiles = EditorPrefs.GetString(prefix + "MarkdownFiles", UniCodexCliConstants.DefaultMarkdownFiles);
-            _maxMarkdownChars = Mathf.Max(500, EditorPrefs.GetInt(prefix + "MaxMarkdownChars", UniCodexCliConstants.DefaultMaxMarkdownChars));
+            var prefix = UniAgentCliConstants.PrefPrefix;
+            _cliPath = EditorPrefs.GetString(prefix + "CliPath", UniAgentCliConstants.DefaultCliPath);
+            _claudeCliPath = EditorPrefs.GetString(prefix + "ClaudeCliPath", UniAgentCliConstants.DefaultClaudeCliPath);
+            _selectedProvider = NormalizeOption(EditorPrefs.GetString(prefix + "Provider", DefaultProvider), ProviderOptions, DefaultProvider);
+            _selectedClaudeModel = NormalizeOption(EditorPrefs.GetString(prefix + "ClaudeModel", DefaultClaudeModel), ClaudeModelOptions, DefaultClaudeModel);
+            _markdownFiles = EditorPrefs.GetString(prefix + "MarkdownFiles", UniAgentCliConstants.DefaultMarkdownFiles);
+            _maxMarkdownChars = Mathf.Max(500, EditorPrefs.GetInt(prefix + "MaxMarkdownChars", UniAgentCliConstants.DefaultMaxMarkdownChars));
             _disableDomainReloadOnPlay = EditorPrefs.GetBool(prefix + "DisableDomainReload", true);
             _disableSceneReloadOnPlay = EditorPrefs.GetBool(prefix + "DisableSceneReload", false);
             _manualRefreshMode = EditorPrefs.GetBool(prefix + "ManualRefreshMode", true);
@@ -3679,13 +3792,16 @@ namespace Achieve.UniCodex.Editor
             _selectedReasoningEffort = NormalizeOption(EditorPrefs.GetString(prefix + "ReasoningEffort", DefaultReasoningEffort), ReasoningEffortOptions, DefaultReasoningEffort);
             _sessionTokenUsed = 0;
             _recentTurnTokenCosts.Clear();
-            _sessionTokenBudget = Mathf.Max(1000, EditorPrefs.GetInt(prefix + "SessionTokenBudget", UniCodexCliConstants.DefaultSessionTokenBudget));
+            _sessionTokenBudget = Mathf.Max(1000, EditorPrefs.GetInt(prefix + "SessionTokenBudget", UniAgentCliConstants.DefaultSessionTokenBudget));
         }
 
         private void SavePrefs()
         {
-            var prefix = UniCodexCliConstants.PrefPrefix;
-            EditorPrefs.SetString(prefix + "CliPath", _cliPath ?? UniCodexCliConstants.DefaultCliPath);
+            var prefix = UniAgentCliConstants.PrefPrefix;
+            EditorPrefs.SetString(prefix + "CliPath", _cliPath ?? UniAgentCliConstants.DefaultCliPath);
+            EditorPrefs.SetString(prefix + "ClaudeCliPath", _claudeCliPath ?? UniAgentCliConstants.DefaultClaudeCliPath);
+            EditorPrefs.SetString(prefix + "Provider", NormalizeOption(_selectedProvider, ProviderOptions, DefaultProvider));
+            EditorPrefs.SetString(prefix + "ClaudeModel", NormalizeOption(_selectedClaudeModel, ClaudeModelOptions, DefaultClaudeModel));
             EditorPrefs.SetString(prefix + "MarkdownFiles", _markdownFiles ?? string.Empty);
             EditorPrefs.SetInt(prefix + "MaxMarkdownChars", Mathf.Max(500, _maxMarkdownChars));
             EditorPrefs.SetBool(prefix + "DisableDomainReload", _disableDomainReloadOnPlay);
@@ -3735,7 +3851,7 @@ namespace Achieve.UniCodex.Editor
                     return;
                 }
 
-                var state = JsonUtility.FromJson<UniCodexChatHistoryState>(json);
+                var state = JsonUtility.FromJson<UniAgentChatHistoryState>(json);
                 if (state == null)
                 {
                     EnsureSessionCollectionInitialized();
@@ -3771,7 +3887,7 @@ namespace Achieve.UniCodex.Editor
 
                         if (session.Messages == null)
                         {
-                            session.Messages = new List<UniCodexChatHistoryItem>();
+                            session.Messages = new List<UniAgentChatHistoryItem>();
                         }
 
                         if (session.RecentTurnTokenCosts == null)
@@ -3785,11 +3901,11 @@ namespace Achieve.UniCodex.Editor
 
                 if (!loadedFromSessions)
                 {
-                    var fallback = new UniCodexChatSessionInfo
+                    var fallback = new UniAgentChatSessionInfo
                     {
                         Id = Guid.NewGuid().ToString("N"),
                         Name = "Session 1",
-                        Messages = state.Messages ?? new List<UniCodexChatHistoryItem>()
+                        Messages = state.Messages ?? new List<UniAgentChatHistoryItem>()
                     };
                     _chatSessions.Add(fallback);
                 }
@@ -3826,7 +3942,7 @@ namespace Achieve.UniCodex.Editor
             EnsureSessionCollectionInitialized();
             SaveActiveSessionSnapshot();
 
-            var state = new UniCodexChatHistoryState();
+            var state = new UniAgentChatHistoryState();
             state.ActiveSessionId = _activeChatSessionId;
             for (var i = 0; i < _chatSessions.Count; i++)
             {
@@ -3836,13 +3952,13 @@ namespace Achieve.UniCodex.Editor
                     continue;
                 }
 
-                var copy = new UniCodexChatSessionInfo
+                var copy = new UniAgentChatSessionInfo
                 {
                     Id = session.Id,
                     Name = session.Name,
                     CodexSessionId = session.CodexSessionId,
                     TokenUsed = session.TokenUsed,
-                    Messages = new List<UniCodexChatHistoryItem>(),
+                    Messages = new List<UniAgentChatHistoryItem>(),
                     RecentTurnTokenCosts = new List<int>()
                 };
 
@@ -3856,7 +3972,7 @@ namespace Achieve.UniCodex.Editor
                             continue;
                         }
 
-                        copy.Messages.Add(new UniCodexChatHistoryItem
+                        copy.Messages.Add(new UniAgentChatHistoryItem
                         {
                             Role = item.Role,
                             Text = item.Text,
@@ -3877,7 +3993,7 @@ namespace Achieve.UniCodex.Editor
                 state.Sessions.Add(copy);
             }
 
-            state.Messages = new List<UniCodexChatHistoryItem>();
+            state.Messages = new List<UniAgentChatHistoryItem>();
             var active = GetActiveChatSession();
             if (active?.Messages != null)
             {
@@ -3889,7 +4005,7 @@ namespace Achieve.UniCodex.Editor
                         continue;
                     }
 
-                    state.Messages.Add(new UniCodexChatHistoryItem
+                    state.Messages.Add(new UniAgentChatHistoryItem
                     {
                         Role = item.Role,
                         Text = item.Text,
@@ -3919,7 +4035,7 @@ namespace Achieve.UniCodex.Editor
 
         private string GetChatHistoryPath()
         {
-            return Path.Combine(UniCodexChatHelper.GetProjectRootPath(), "Library", UniCodexCliConstants.ChatHistoryFileName);
+            return Path.Combine(UniAgentChatHelper.GetProjectRootPath(), "Library", UniAgentCliConstants.ChatHistoryFileName);
         }
 
         private static ChatRole ParseChatRole(int rawValue)
@@ -3992,22 +4108,22 @@ namespace Achieve.UniCodex.Editor
         // Local utility wrappers
         // -------------------------
 
-        private UniCodex.IClient ConfigureUniCodexClient(bool? fullAutoOverride = null)
+        private UniAgent.IClient ConfigureUniAgentClient(bool? fullAutoOverride = null)
         {
-            UniCodex.ConfigureClient(new UniCodexEditorCliClientAdapter(() => CreateCliService(fullAutoOverride)));
-            return UniCodex.Client;
+            UniAgent.ConfigureClient(new UniAgentEditorCliClientAdapter(() => CreateCliService(fullAutoOverride)));
+            return UniAgent.Client;
         }
 
-        private Task<UniCodexRunResult> RunThroughUniCodexClient(string prompt, bool? fullAutoOverride = null)
+        private Task<UniAgentRunResult> RunThroughUniAgentClient(string prompt, bool? fullAutoOverride = null)
         {
-            var client = ConfigureUniCodexClient(fullAutoOverride);
+            var client = ConfigureUniAgentClient(fullAutoOverride);
             var fullAutoForCurrentMode = _chatMode == ChatMode.Build && _fullAuto;
             if (fullAutoOverride.HasValue)
             {
                 fullAutoForCurrentMode = fullAutoOverride.Value;
             }
 
-            var request = new UniCodexClientRunRequest
+            var request = new UniAgentClientRunRequest
             {
                 Prompt = prompt,
                 SessionId = _sessionId ?? string.Empty,
@@ -4021,30 +4137,30 @@ namespace Achieve.UniCodex.Editor
             {
                 if (task.IsFaulted)
                 {
-                    return UniCodexRunResult.FromError(task.Exception?.GetBaseException().Message ?? "Unknown execution error");
+                    return UniAgentRunResult.FromError(task.Exception?.GetBaseException().Message ?? "Unknown execution error");
                 }
 
                 return ToLegacyRunResult(task.Result);
             });
         }
 
-        private static UniCodexCommandResult ToLegacyCommandResult(UniCodexResult result)
+        private static UniAgentCommandResult ToLegacyCommandResult(UniAgentResult result)
         {
-            return new UniCodexCommandResult
+            return new UniAgentCommandResult
             {
                 Success = result != null && result.Success,
                 Message = result == null ? "Unknown command result." : result.Message
             };
         }
 
-        private static UniCodexRunResult ToLegacyRunResult(UniCodexClientRunResult result)
+        private static UniAgentRunResult ToLegacyRunResult(UniAgentClientRunResult result)
         {
             if (result == null)
             {
-                return UniCodexRunResult.FromError("Run result is null.");
+                return UniAgentRunResult.FromError("Run result is null.");
             }
 
-            return new UniCodexRunResult
+            return new UniAgentRunResult
             {
                 Success = result.Success,
                 Message = result.Message,
@@ -4055,7 +4171,7 @@ namespace Achieve.UniCodex.Editor
             };
         }
 
-        private UniCodexCliService CreateCliService(bool? fullAutoOverride = null)
+        private UniAgentCliService CreateCliService(bool? fullAutoOverride = null)
         {
             var fullAutoForCurrentMode = _chatMode == ChatMode.Build && _fullAuto;
             if (fullAutoOverride.HasValue)
@@ -4063,19 +4179,30 @@ namespace Achieve.UniCodex.Editor
                 fullAutoForCurrentMode = fullAutoOverride.Value;
             }
 
-            return new UniCodexCliService(
-                _cliPath,
-                UniCodexChatHelper.GetProjectRootPath(),
+            var provider = _selectedProvider == "Claude Code" ? CliProvider.ClaudeCode : CliProvider.Codex;
+            var cliPath = provider == CliProvider.ClaudeCode ? _claudeCliPath : _cliPath;
+            var model = provider == CliProvider.ClaudeCode
+                ? NormalizeOption(_selectedClaudeModel, ClaudeModelOptions, DefaultClaudeModel)
+                : NormalizeOption(_selectedModel, ModelOptions, DefaultModel);
+            var reasoningEffort = provider == CliProvider.ClaudeCode
+                ? string.Empty
+                : NormalizeOption(_selectedReasoningEffort, ReasoningEffortOptions, DefaultReasoningEffort);
+
+            return new UniAgentCliService(
+                cliPath,
+                UniAgentChatHelper.GetProjectRootPath(),
                 _useProjectCodexHome,
                 GetProjectCodexHome(),
                 fullAutoForCurrentMode,
-                NormalizeOption(_selectedModel, ModelOptions, DefaultModel),
-                NormalizeOption(_selectedReasoningEffort, ReasoningEffortOptions, DefaultReasoningEffort));
+                model,
+                reasoningEffort,
+                UniAgentCliConstants.DefaultExecTimeoutMs,
+                provider);
         }
 
         private string GetProjectCodexHome()
         {
-            return UniCodexChatHelper.GetProjectCodexHome(_projectCodexHomeRelative);
+            return UniAgentChatHelper.GetProjectCodexHome(_projectCodexHomeRelative);
         }
 
         private static Font GetPreferredUiFont()
@@ -4371,7 +4498,7 @@ namespace Achieve.UniCodex.Editor
         /// <summary>
         /// 세션 토큰 사용량을 표시하는 경량 원형 게이지입니다.
         /// </summary>
-        private sealed class UniCodexTokenGaugeElement : VisualElement
+        private sealed class UniAgentTokenGaugeElement : VisualElement
         {
             private float _progress;
             private Color _fillColor = new Color(0.17f, 0.56f, 0.94f, 1f);
@@ -4412,7 +4539,7 @@ namespace Achieve.UniCodex.Editor
             }
 
             /// <summary>토큰 게이지 UI 요소를 생성합니다.</summary>
-            public UniCodexTokenGaugeElement()
+            public UniAgentTokenGaugeElement()
             {
                 pickingMode = PickingMode.Ignore;
                 generateVisualContent += OnGenerateVisualContent;
@@ -4473,18 +4600,18 @@ namespace Achieve.UniCodex.Editor
         }
 
         [Serializable]
-        private sealed class UniCodexChatHistoryState
+        private sealed class UniAgentChatHistoryState
         {
             /// <summary>현재 활성 채팅 세션 ID입니다.</summary>
             public string ActiveSessionId;
             /// <summary>저장된 채팅 세션 목록입니다.</summary>
-            public List<UniCodexChatSessionInfo> Sessions = new List<UniCodexChatSessionInfo>();
+            public List<UniAgentChatSessionInfo> Sessions = new List<UniAgentChatSessionInfo>();
             /// <summary>레거시 호환용 최상위 메시지 목록입니다.</summary>
-            public List<UniCodexChatHistoryItem> Messages = new List<UniCodexChatHistoryItem>();
+            public List<UniAgentChatHistoryItem> Messages = new List<UniAgentChatHistoryItem>();
         }
 
         [Serializable]
-        private sealed class UniCodexChatSessionInfo
+        private sealed class UniAgentChatSessionInfo
         {
             /// <summary>내부 고유 세션 ID입니다.</summary>
             public string Id;
@@ -4497,11 +4624,11 @@ namespace Achieve.UniCodex.Editor
             /// <summary>추정 계산용 최근 턴별 토큰 비용입니다.</summary>
             public List<int> RecentTurnTokenCosts = new List<int>();
             /// <summary>이 세션에 저장된 메시지 목록입니다.</summary>
-            public List<UniCodexChatHistoryItem> Messages = new List<UniCodexChatHistoryItem>();
+            public List<UniAgentChatHistoryItem> Messages = new List<UniAgentChatHistoryItem>();
         }
 
         [Serializable]
-        private sealed class UniCodexChatHistoryItem
+        private sealed class UniAgentChatHistoryItem
         {
             /// <summary>직렬화된 <see cref="ChatRole"/> 값입니다.</summary>
             public int Role;
@@ -4513,15 +4640,15 @@ namespace Achieve.UniCodex.Editor
             public string TokenSummary;
         }
 
-        private sealed class UniCodexDeferredRunResult
+        private sealed class UniAgentDeferredRunResult
         {
             /// <summary>Codex 실행 결과 페이로드입니다.</summary>
-            public UniCodexRunResult Result;
+            public UniAgentRunResult Result;
             /// <summary>이 실행이 Diff Preview 모드 요청인지 여부입니다.</summary>
             public bool DiffPreviewTurn;
         }
 
-        private sealed class UniCodexChatMessage
+        private sealed class UniAgentChatMessage
         {
             /// <summary>채팅 타임라인에서의 메시지 역할입니다.</summary>
             public ChatRole Role;
