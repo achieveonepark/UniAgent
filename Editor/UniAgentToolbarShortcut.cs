@@ -47,7 +47,7 @@ namespace Achieve.UniAgent.Editor
             EditorApplication.update += EnsureShortcutInstalled;
         }
 
-        [MenuItem("Tools/Codex/Reinstall Toolbar Shortcut")]
+        [MenuItem("Tools/UniAgent/Reinstall Toolbar Shortcut")]
         private static void ReinstallShortcut()
         {
             _cachedToolbar = null;

@@ -143,7 +143,7 @@ namespace Achieve.UniAgent.Editor
         private const string BaseFieldInputClassName = "unity-base-field__input";
         private const string TextInputClassName = "unity-text-input";
         private const string BaseTextFieldInputClassName = "unity-base-text-field__input";
-        private const string DefaultModel = "gpt-5.3-codex";
+        private const string DefaultModel = "gpt-5.5-codex";
         private const string DefaultReasoningEffort = "xhigh";
         private const string DefaultProvider = "Codex";
         private const string DefaultClaudeModel = "claude-sonnet-4-6";
@@ -166,6 +166,8 @@ namespace Achieve.UniAgent.Editor
         };
         private static readonly List<string> ModelOptions = new List<string>
         {
+            "gpt-5.5-codex",
+            "gpt-5.4-codex",
             "gpt-5.3-codex",
             "gpt-5.2-codex"
         };
@@ -206,7 +208,7 @@ namespace Achieve.UniAgent.Editor
             if (HasActiveRuns())
             {
                 _isBusy = true;
-                _statusText = "Codex is thinking...";
+                _statusText = $"{GetProviderDisplayName()} is thinking...";
                 UniAgentToolbarShortcut.SetBusyState();
             }
 
@@ -414,7 +416,7 @@ namespace Achieve.UniAgent.Editor
 
             var refreshButton = new Button(RefreshEnvironmentState) { text = "Refresh" };
             refreshButton.style.width = 88f;
-            refreshButton.tooltip = "Re-check Codex install and login status";
+            refreshButton.tooltip = "Re-check CLI install and login status";
             ApplyButtonStyle(refreshButton, UiSecondaryButton, UiSecondaryButtonBorder, UiTextPrimary, 24f, 6f);
             loginRow.Add(refreshButton);
 
@@ -592,6 +594,12 @@ namespace Achieve.UniAgent.Editor
 
             var isOpen = _settingsPanel.style.display != DisplayStyle.None;
             _settingsPanel.style.display = isOpen ? DisplayStyle.None : DisplayStyle.Flex;
+        }
+
+        /// <summary>현재 선택된 provider의 사용자 표시 이름을 반환합니다.</summary>
+        private string GetProviderDisplayName()
+        {
+            return _selectedProvider == "Claude Code" ? "Claude" : "Codex";
         }
 
         private void UpdateProviderDependentUI()
@@ -887,7 +895,7 @@ namespace Achieve.UniAgent.Editor
                 sb.AppendLine("남은 대화 추정: 계산 중 (턴 데이터 부족)");
             }
 
-            sb.Append("참고: codex exec 토큰 기반 추정치이며 실제 계정 quota와 다를 수 있습니다.");
+            sb.Append($"참고: {GetProviderDisplayName()} 토큰 기반 추정치이며 실제 계정 quota와 다를 수 있습니다.");
             return sb.ToString();
         }
 
@@ -1847,7 +1855,7 @@ namespace Achieve.UniAgent.Editor
 
             if (!_isBusy)
             {
-                SetStatus("Checking codex and login status...");
+                SetStatus("Checking CLI and login status...");
             }
             Task.Run(() =>
             {
@@ -2012,13 +2020,14 @@ namespace Achieve.UniAgent.Editor
 
                 EditorApplication.delayCall += () =>
                 {
+                    var logoutProviderName = GetProviderDisplayName();
                     if (result.Success)
                     {
-                        AddMessage(ChatRole.System, "Codex logout completed.");
+                        AddMessage(ChatRole.System, $"{logoutProviderName} logout completed.");
                     }
                     else
                     {
-                        AddMessage(ChatRole.Error, $"Codex logout failed: {result.Message}");
+                        AddMessage(ChatRole.Error, $"{logoutProviderName} logout failed: {result.Message}");
                     }
 
                     SetBusy(false, "Ready");
@@ -2098,7 +2107,8 @@ namespace Achieve.UniAgent.Editor
 
             var diffPreviewThisTurn = _chatMode == ChatMode.Build && _buildDiffPreviewMode;
             var prompt = diffPreviewThisTurn ? BuildDiffPreviewPrompt(text) : BuildPrompt(text);
-            SetBusy(true, diffPreviewThisTurn ? "Codex is generating diff preview..." : "Codex is thinking...");
+            var agentName = GetProviderDisplayName();
+            SetBusy(true, diffPreviewThisTurn ? $"{agentName} is generating diff preview..." : $"{agentName} is thinking...");
             IncrementActiveRuns();
 
             RunThroughUniAgentClient(prompt, diffPreviewThisTurn ? false : (bool?)null).ContinueWith(task =>
@@ -2218,9 +2228,10 @@ namespace Achieve.UniAgent.Editor
                 return;
             }
 
-            var errorText = string.IsNullOrWhiteSpace(result.Message) ? "Codex execution failed." : result.Message;
+            var runProviderName = GetProviderDisplayName();
+            var errorText = string.IsNullOrWhiteSpace(result.Message) ? $"{runProviderName} execution failed." : result.Message;
             CompletePendingAssistantMessage(errorText, ChatRole.Error, tokenSummary);
-            SetBusy(false, "Codex execution failed");
+            SetBusy(false, $"{runProviderName} execution failed");
         }
 
         private static void DispatchRunResult(UniAgentRunResult result, bool diffPreviewTurn)
@@ -2454,7 +2465,7 @@ namespace Achieve.UniAgent.Editor
             var trimmed = responseText?.Trim() ?? string.Empty;
             if (string.Equals(trimmed, "NO_CHANGES", StringComparison.OrdinalIgnoreCase))
             {
-                return "No code changes were needed.\n\n`Codex Diff Preview` window shows `NO_CHANGES`.";
+                return "No code changes were needed.\n\n`Diff Preview` window shows `NO_CHANGES`.";
             }
 
             var diffText = ExtractUnifiedDiffBlock(responseText);
@@ -2473,7 +2484,7 @@ namespace Achieve.UniAgent.Editor
                 sb.AppendLine();
             }
 
-            sb.Append("Opened `Codex Diff Preview` window");
+            sb.Append("Opened `Diff Preview` window");
             if (!string.IsNullOrWhiteSpace(stats))
             {
                 sb.Append(" (");
@@ -2739,7 +2750,7 @@ namespace Achieve.UniAgent.Editor
             SaveActiveSessionSnapshot();
             SaveChatHistory();
             SavePrefs();
-            AddMessage(ChatRole.System, "Session reset. Next message starts a new codex thread.");
+            AddMessage(ChatRole.System, $"Session reset. Next message starts a new {GetProviderDisplayName()} thread.");
             UpdateTokenGaugeUI();
             UpdateStatusUI();
         }
@@ -2804,7 +2815,7 @@ namespace Achieve.UniAgent.Editor
             {
                 existingMessage.IsLoading = true;
                 existingMessage.Role = ChatRole.Assistant;
-                existingMessage.Text = BuildThinkingText(_pendingDotCount, _pendingProgressLines);
+                existingMessage.Text = BuildThinkingText(_pendingDotCount, _pendingProgressLines, GetProviderDisplayName());
                 existingMessage.Time = DateTime.Now.ToString("HH:mm:ss");
                 existingMessage.TokenSummary = null;
                 _pendingAssistantMessage = existingMessage;
@@ -2812,7 +2823,7 @@ namespace Achieve.UniAgent.Editor
             }
             else
             {
-                _pendingAssistantMessage = AddMessage(ChatRole.Assistant, BuildThinkingText(_pendingDotCount, _pendingProgressLines), null, true);
+                _pendingAssistantMessage = AddMessage(ChatRole.Assistant, BuildThinkingText(_pendingDotCount, _pendingProgressLines, GetProviderDisplayName()), null, true);
             }
 
             _pendingAnimationItem = rootVisualElement.schedule.Execute(() =>
@@ -2824,7 +2835,7 @@ namespace Achieve.UniAgent.Editor
                 }
 
                 _pendingDotCount = (_pendingDotCount + 1) % 4;
-                _pendingAssistantMessage.Text = BuildThinkingText(_pendingDotCount, _pendingProgressLines);
+                _pendingAssistantMessage.Text = BuildThinkingText(_pendingDotCount, _pendingProgressLines, GetProviderDisplayName());
                 RefreshChatUI();
             }).Every(450);
         }
@@ -2883,7 +2894,7 @@ namespace Achieve.UniAgent.Editor
                 _pendingProgressLines.RemoveAt(0);
             }
 
-            _pendingAssistantMessage.Text = BuildThinkingText(_pendingDotCount, _pendingProgressLines);
+            _pendingAssistantMessage.Text = BuildThinkingText(_pendingDotCount, _pendingProgressLines, GetProviderDisplayName());
             RefreshChatUI();
             ScrollToBottom();
         }
@@ -2991,9 +3002,9 @@ namespace Achieve.UniAgent.Editor
             SetStatus("Ready");
         }
 
-        private static string BuildThinkingText(int dotCount, List<string> progressLines)
+        private static string BuildThinkingText(int dotCount, List<string> progressLines, string agentName = "Agent")
         {
-            var title = "Codex is thinking" + new string('.', dotCount);
+            var title = $"{agentName} is thinking" + new string('.', dotCount);
             if (progressLines == null || progressLines.Count == 0)
             {
                 return title + "\nWorking...";

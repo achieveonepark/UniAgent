@@ -111,7 +111,7 @@ namespace Achieve.UniAgent.Editor
         internal static void ShowDiff(string diffTitle, string diffText, Func<string, string, Task<UniAgentRunResult>> refineRequestHandler = null)
         {
             var window = GetWindow<UniAgentDiffPreviewWindow>();
-            window.titleContent = new GUIContent("Codex Diff Preview");
+            window.titleContent = new GUIContent("Diff Preview");
             window.minSize = new Vector2(820f, 520f);
             window._diffTitle = string.IsNullOrWhiteSpace(diffTitle) ? "Diff Preview" : diffTitle.Trim();
             window._diffText = string.IsNullOrWhiteSpace(diffText) ? NoChangesToken : diffText;
@@ -1064,7 +1064,7 @@ namespace Achieve.UniAgent.Editor
             RefreshUI();
             if (_metaLabel != null)
             {
-                _metaLabel.text = "Refining with Codex...";
+                _metaLabel.text = "Refining...";
             }
 
             Task<UniAgentRunResult> task;
@@ -1077,7 +1077,7 @@ namespace Achieve.UniAgent.Editor
                 _isRefining = false;
                 activeTab.Status = DiffTabStatus.Error;
                 RefreshUI();
-                EditorUtility.DisplayDialog("Codex Diff Preview", $"Refine failed:\n{ex.Message}", "OK");
+                EditorUtility.DisplayDialog("Diff Preview", $"Refine failed:\n{ex.Message}", "OK");
                 return;
             }
 
@@ -1086,7 +1086,7 @@ namespace Achieve.UniAgent.Editor
                 _isRefining = false;
                 activeTab.Status = DiffTabStatus.Error;
                 RefreshUI();
-                EditorUtility.DisplayDialog("Codex Diff Preview", "Refine failed: empty task.", "OK");
+                EditorUtility.DisplayDialog("Diff Preview", "Refine failed: empty task.", "OK");
                 return;
             }
 
@@ -1106,7 +1106,7 @@ namespace Achieve.UniAgent.Editor
             if (activeTab == null)
             {
                 RefreshUI();
-                EditorUtility.DisplayDialog("Codex Diff Preview", "Refine failed: no active tab.", "OK");
+                EditorUtility.DisplayDialog("Diff Preview", "Refine failed: no active tab.", "OK");
                 return;
             }
 
@@ -1114,7 +1114,7 @@ namespace Achieve.UniAgent.Editor
             {
                 activeTab.Status = DiffTabStatus.Error;
                 RefreshUI();
-                EditorUtility.DisplayDialog("Codex Diff Preview", "Refine failed: no result.", "OK");
+                EditorUtility.DisplayDialog("Diff Preview", "Refine failed: no result.", "OK");
                 return;
             }
 
@@ -1123,7 +1123,7 @@ namespace Achieve.UniAgent.Editor
                 activeTab.Status = DiffTabStatus.Error;
                 RefreshUI();
                 var message = string.IsNullOrWhiteSpace(result.Message) ? "Unknown refine error." : result.Message;
-                EditorUtility.DisplayDialog("Codex Diff Preview", $"Refine failed:\n{message}", "OK");
+                EditorUtility.DisplayDialog("Diff Preview", $"Refine failed:\n{message}", "OK");
                 return;
             }
 
@@ -1150,7 +1150,7 @@ namespace Achieve.UniAgent.Editor
             {
                 activeTab.Status = DiffTabStatus.Error;
                 RefreshUI();
-                EditorUtility.DisplayDialog("Codex Diff Preview", "Refine response did not contain a valid diff.", "OK");
+                EditorUtility.DisplayDialog("Diff Preview", "Refine response did not contain a valid diff.", "OK");
                 return;
             }
 
@@ -1158,7 +1158,7 @@ namespace Achieve.UniAgent.Editor
             {
                 activeTab.Status = DiffTabStatus.Error;
                 RefreshUI();
-                EditorUtility.DisplayDialog("Codex Diff Preview", $"Refine parse failed:\n{parseError}", "OK");
+                EditorUtility.DisplayDialog("Diff Preview", $"Refine parse failed:\n{parseError}", "OK");
                 return;
             }
 
@@ -1166,7 +1166,7 @@ namespace Achieve.UniAgent.Editor
             {
                 activeTab.Status = DiffTabStatus.Error;
                 RefreshUI();
-                EditorUtility.DisplayDialog("Codex Diff Preview", "Refine must return exactly one file diff for the active tab.", "OK");
+                EditorUtility.DisplayDialog("Diff Preview", "Refine must return exactly one file diff for the active tab.", "OK");
                 return;
             }
 
@@ -1366,7 +1366,7 @@ namespace Achieve.UniAgent.Editor
             {
                 activeTab.Status = DiffTabStatus.Error;
                 RefreshUI();
-                EditorUtility.DisplayDialog("Codex Diff Preview", $"Apply failed:\n{applyError}", "OK");
+                EditorUtility.DisplayDialog("Diff Preview", $"Apply failed:\n{applyError}", "OK");
                 return;
             }
 

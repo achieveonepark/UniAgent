@@ -16,7 +16,7 @@ namespace Achieve.UniAgent.Editor
     /// </summary>
     internal static class UniAgentUnityEditorHelper
     {
-        private const string MenuRoot = "Tools/Codex/Unity Helper/";
+        private const string MenuRoot = "Tools/UniAgent/Unity Helper/";
         private const string DefaultGeneratedPrefabFolder = "Assets/Res/Prefabs/CodexGenerated";
         private const string DefaultCsvTableFolder = "Assets/Resources/DataTables";
         private static readonly Dictionary<string, Type> ComponentTypeCache = new Dictionary<string, Type>(StringComparer.Ordinal);
@@ -544,7 +544,7 @@ namespace Achieve.UniAgent.Editor
                 : action.objectName.Trim();
 
             var gameObject = new GameObject(objectName);
-            Undo.RegisterCreatedObjectUndo(gameObject, "Create Codex sprite object");
+            Undo.RegisterCreatedObjectUndo(gameObject, "Create sprite object");
             SceneManager.MoveGameObjectToScene(gameObject, scene);
 
             if (action.setPosition)

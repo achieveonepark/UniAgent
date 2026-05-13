@@ -23,7 +23,7 @@ namespace Achieve.UniAgent.Editor
             int maxTargetedFileChars = 2800)
         {
             var sb = new StringBuilder();
-            sb.AppendLine("Unity Editor Codex bridge context:");
+            sb.AppendLine("Unity Editor Agent bridge context:");
             sb.AppendLine($"- Project root: {GetProjectRootPath()}");
             sb.AppendLine($"- Unity action bridge file: {GetUnityActionFilePath()}");
             sb.AppendLine("- For scene/object/component changes, write JSON actions to that file (schema in Assets/Editor/UniAgentUnityEditorHelper.cs).");

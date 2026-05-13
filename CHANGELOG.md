@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.0.1] - 2026-05-13
+
+### Added
+
+- Codex 모델 선택 옵션에 `gpt-5.4-codex`, `gpt-5.5-codex` 추가
+
 ## [1.0.0] - 2026-03-01
 
 ### Added

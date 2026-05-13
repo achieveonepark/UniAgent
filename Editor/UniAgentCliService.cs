@@ -85,7 +85,7 @@ namespace Achieve.UniAgent.Editor
             if (!state.Installed)
             {
                 state.LoggedIn = false;
-                state.LoginText = "Codex not installed.";
+                state.LoginText = (_provider == CliProvider.ClaudeCode ? "Claude Code" : "Codex") + " CLI not installed.";
                 return state;
             }
 

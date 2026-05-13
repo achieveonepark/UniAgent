@@ -160,8 +160,8 @@ namespace Achieve.UniAgent.Editor
                 {
                     IsLoggedIn = isLoggedIn,
                     UserId = string.Empty,
-                    DisplayName = isLoggedIn ? "Codex CLI User" : string.Empty,
-                    Provider = "codex-cli"
+                    DisplayName = isLoggedIn ? "CLI User" : string.Empty,
+                    Provider = "agent-cli"
                 };
             }
         }
