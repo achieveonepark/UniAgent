@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.RegularExpressions;
 
@@ -222,9 +223,118 @@ namespace Achieve.UniAgent.Editor
                 return true;
             }
 
+            // None of the direct candidates worked. Unity Editor is a GUI process, so on
+            // macOS/Linux it does not inherit PATH entries that nvm/volta/asdf add via
+            // .zshrc/.bashrc — those are only sourced by an interactive shell. Resolve the
+            // command the same way a terminal would before giving up.
+            var commandName = _provider == CliProvider.ClaudeCode
+                ? UniAgentCliConstants.DefaultClaudeCliPath
+                : UniAgentCliConstants.DefaultCliPath;
+            if (TryResolveViaShell(commandName, out var shellResolvedPath) &&
+                !candidates.Contains(shellResolvedPath) &&
+                TryGetCodexVersion(shellResolvedPath, out var shellVersionOrError))
+            {
+                resolvedCliPath = shellResolvedPath;
+                versionText = shellVersionOrError;
+                return true;
+            }
+
             resolvedCliPath = string.Empty;
             versionText = "Not found";
             return false;
+        }
+
+        /// <summary>
+        /// 사용자의 로그인/대화형 셸(또는 Windows에서는 <c>where</c>)을 통해 명령 경로를 해석합니다.
+        /// nvm/volta 등으로 설치되어 고정 경로 후보 목록에 없는 CLI도 찾을 수 있습니다.
+        /// </summary>
+        private static bool TryResolveViaShell(string commandName, out string resolvedPath)
+        {
+            resolvedPath = string.Empty;
+            if (string.IsNullOrWhiteSpace(commandName))
+            {
+                return false;
+            }
+
+            try
+            {
+                if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+                {
+                    return TryResolveFirstLine("cmd.exe", $"/d /c where {commandName}", out resolvedPath);
+                }
+
+                var shellCandidates = new List<string>();
+                var envShell = Environment.GetEnvironmentVariable("SHELL");
+                if (!string.IsNullOrWhiteSpace(envShell))
+                {
+                    shellCandidates.Add(envShell);
+                }
+
+                if (!shellCandidates.Contains("/bin/zsh"))
+                {
+                    shellCandidates.Add("/bin/zsh");
+                }
+
+                if (!shellCandidates.Contains("/bin/bash"))
+                {
+                    shellCandidates.Add("/bin/bash");
+                }
+
+                foreach (var shell in shellCandidates)
+                {
+                    // -ilc: interactive + login shell so PATH additions in .zshrc/.bashrc/.zprofile
+                    // (nvm, volta, homebrew, etc.) are sourced just like an interactive terminal.
+                    if (TryResolveFirstLine(shell, $"-ilc \"command -v {commandName}\"", out resolvedPath))
+                    {
+                        return true;
+                    }
+                }
+
+                return false;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        private static bool TryResolveFirstLine(string fileName, string arguments, out string resolvedPath)
+        {
+            resolvedPath = string.Empty;
+            try
+            {
+                var psi = new ProcessStartInfo
+                {
+                    FileName = fileName,
+                    Arguments = arguments,
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true,
+                    UseShellExecute = false,
+                    CreateNoWindow = true
+                };
+
+                using var process = new Process { StartInfo = psi };
+                process.Start();
+                var output = process.StandardOutput.ReadToEnd();
+                process.WaitForExit(8000);
+
+                var lines = output.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
+                foreach (var line in lines)
+                {
+                    var trimmed = line.Trim();
+                    if (!string.IsNullOrEmpty(trimmed) && File.Exists(trimmed))
+                    {
+                        resolvedPath = trimmed;
+                        return true;
+                    }
+                }
+
+                return false;
+            }
+            catch
+            {
+                return false;
+            }
         }
 
         private bool TryQueryLoginStatus(out string loginText, string cliPathOverride = null)

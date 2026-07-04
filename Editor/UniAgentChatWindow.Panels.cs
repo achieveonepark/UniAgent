@@ -100,6 +100,24 @@ namespace Achieve.UniAgent.Editor
             providerRow.Add(providerPopup);
             panel.Add(providerRow);
 
+            // ── Codex CLI 경로(수동 재정의) ────────────────────────────────
+            _codexCliPathRow = BuildCliPathRow(
+                "Codex Path",
+                () => _cliPath,
+                value => _cliPath = value,
+                UniAgentCliConstants.DefaultCliPath,
+                "자동 탐지에 실패하면 `which codex`(macOS/Linux) 또는 `where codex`(Windows) 결과를 그대로 붙여넣으세요. 비워두면 자동 탐지를 사용합니다.");
+            panel.Add(_codexCliPathRow);
+
+            // ── Claude Code CLI 경로(수동 재정의) ───────────────────────────
+            _claudeCliPathRow = BuildCliPathRow(
+                "Claude Path",
+                () => _claudeCliPath,
+                value => _claudeCliPath = value,
+                UniAgentCliConstants.DefaultClaudeCliPath,
+                "자동 탐지에 실패하면 `which claude`(macOS/Linux) 또는 `where claude`(Windows) 결과를 그대로 붙여넣으세요. 비워두면 자동 탐지를 사용합니다.");
+            panel.Add(_claudeCliPathRow);
+
             // ── Codex 모델 행 ─────────────────────────────────────────────
             _codexModelRow = new VisualElement();
             _codexModelRow.style.flexDirection = FlexDirection.Row;
@@ -255,6 +273,42 @@ namespace Achieve.UniAgent.Editor
             });
         }
 
+        /// <summary>
+        /// CLI 실행 경로를 수동으로 재정의할 수 있는 설정 행을 만듭니다. 값을 비우면 자동 탐지(내장 후보
+        /// 목록 + 로그인 셸 <c>command -v</c>/<c>where</c> 해석)로 되돌아갑니다. Homebrew/npm 기본 경로가
+        /// 아닌 nvm·volta 등으로 설치했거나 Unity 에디터가 CLI를 찾지 못할 때 직접 경로를 입력하는 우회로입니다.
+        /// </summary>
+        private VisualElement BuildCliPathRow(string labelText, Func<string> getter, Action<string> setter, string defaultValue, string tooltip)
+        {
+            var row = new VisualElement();
+            row.style.flexDirection = FlexDirection.Row;
+            row.style.alignItems = Align.Center;
+            row.style.marginBottom = 4f;
+
+            var label = new Label(labelText);
+            ApplyPreferredFont(label);
+            label.style.color = UiTextSecondary;
+            label.style.width = 90f;
+            label.style.minWidth = 90f;
+            label.style.marginRight = 6f;
+            row.Add(label);
+
+            var field = new TextField { value = getter() ?? string.Empty };
+            field.style.flexGrow = 1f;
+            ApplyPreferredFont(field);
+            StyleTextFieldInput(field, 6f);
+            field.tooltip = tooltip;
+            field.RegisterValueChangedCallback(evt =>
+            {
+                var trimmed = evt.newValue?.Trim() ?? string.Empty;
+                setter(string.IsNullOrEmpty(trimmed) ? defaultValue : trimmed);
+                SavePrefs();
+            });
+            row.Add(field);
+
+            return row;
+        }
+
         private VisualElement BuildModeSelector()
         {
             var modeRow = new VisualElement();
@@ -342,6 +396,16 @@ namespace Achieve.UniAgent.Editor
             if (_reasoningRow != null)
             {
                 _reasoningRow.style.display = isClaudeProvider ? DisplayStyle.None : DisplayStyle.Flex;
+            }
+
+            if (_codexCliPathRow != null)
+            {
+                _codexCliPathRow.style.display = isClaudeProvider ? DisplayStyle.None : DisplayStyle.Flex;
+            }
+
+            if (_claudeCliPathRow != null)
+            {
+                _claudeCliPathRow.style.display = isClaudeProvider ? DisplayStyle.Flex : DisplayStyle.None;
             }
         }
 

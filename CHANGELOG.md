@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.0.6] - 2026-07-04
+
+### Fixed
+
+- Codex/Claude Code CLI가 설치돼 있어도 "CLI was not found"가 뜨던 문제 수정: Unity 에디터(GUI 프로세스)는
+  nvm/volta 등이 `.zshrc`/`.bashrc`에 추가한 PATH를 상속받지 못하는 경우가 많아, 내장 후보 경로로도 못 찾으면
+  로그인/대화형 셸(`command -v`, macOS/Linux) 또는 `where`(Windows)로 한 번 더 해석하도록 개선
+- 내장 CLI 후보 경로에 `~/.volta/bin`, `~/.local/bin`, Windows `%USERPROFILE%\AppData\Roaming\npm` 추가
+- README/`package.json`의 저장소 URL이 예전 이름(`unicodex`)을 가리켜 UPM Git URL 설치 시 404가 나던 문제 수정 (`uni-agent`로 정정)
+
+### Added
+
+- 설정 패널에 Codex/Claude Code CLI 경로를 직접 입력할 수 있는 수동 재정의 필드 추가(자동 탐지 실패 시 우회용)
+
 ## [1.0.5] - 2026-07-04
 
 ### Added

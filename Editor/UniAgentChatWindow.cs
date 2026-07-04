@@ -65,6 +65,8 @@ namespace Achieve.UniAgent.Editor
         private VisualElement _codexModelRow;
         private VisualElement _claudeModelRow;
         private VisualElement _reasoningRow;
+        private VisualElement _codexCliPathRow;
+        private VisualElement _claudeCliPathRow;
         private Label _modelCatalogStatusLabel;
 
         // Persisted/runtime options.

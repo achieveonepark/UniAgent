@@ -38,7 +38,7 @@ Unity 컴포넌트/오브젝트를 접근해 수정할 수 있도록 Action Brid
 4. 아래 URL 입력
 
 ```text
-https://github.com/achieveonepark/unicodex.git#1.0.0
+https://github.com/achieveonepark/uni-agent.git#main
 ```
 
 ### `manifest.json`에 직접 추가
@@ -46,7 +46,7 @@ https://github.com/achieveonepark/unicodex.git#1.0.0
 `Packages/manifest.json`의 `dependencies`에 추가:
 
 ```json
-"com.achieve.uni-codex": "https://github.com/achieveonepark/unicodex.git#1.0.0"
+"com.achieve.uni-codex": "https://github.com/achieveonepark/uni-agent.git#main"
 ```
 
 ## 빠른 시작

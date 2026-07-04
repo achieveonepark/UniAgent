@@ -1,3 +1,5 @@
+using System;
+
 namespace Achieve.UniAgent.Editor
 {
     /// <summary>
@@ -28,13 +30,23 @@ namespace Achieve.UniAgent.Editor
         /// <summary>프로젝트 로컬 Unity Action Bridge 파일명입니다.</summary>
         public const string UnityActionFileName = "CodexUnityActions.json";
 
+        /// <summary>
+        /// 사용자 홈 디렉터리입니다. Unity 에디터(GUI 프로세스)는 터미널과 달리 nvm/volta 등이
+        /// PATH에 추가해 둔 경로를 상속받지 못하는 경우가 많아, 자주 쓰이는 설치 위치를
+        /// 홈 디렉터리 기준으로 후보에 직접 추가하기 위해 사용합니다.
+        /// </summary>
+        private static readonly string HomeDirectory = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+
         /// <summary>검색 순서대로 시도할 Codex CLI 실행 경로 목록입니다.</summary>
         public static readonly string[] CliCandidates =
         {
             DefaultCliPath,
             MacBundledCliPath,
             "/opt/homebrew/bin/codex",
-            "/usr/local/bin/codex"
+            "/usr/local/bin/codex",
+            CombineHome(".volta/bin/codex"),
+            CombineHome(".local/bin/codex"),
+            CombineHome("AppData/Roaming/npm/codex.cmd")
         };
 
         // ── Claude Code CLI ────────────────────────────────────────────────
@@ -49,7 +61,15 @@ namespace Achieve.UniAgent.Editor
         {
             DefaultClaudeCliPath,
             "/opt/homebrew/bin/claude",
-            "/usr/local/bin/claude"
+            "/usr/local/bin/claude",
+            CombineHome(".volta/bin/claude"),
+            CombineHome(".local/bin/claude"),
+            CombineHome("AppData/Roaming/npm/claude.cmd")
         };
+
+        private static string CombineHome(string relativePath)
+        {
+            return string.IsNullOrEmpty(HomeDirectory) ? relativePath : $"{HomeDirectory}/{relativePath}";
+        }
     }
 }
