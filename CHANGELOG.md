@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.0.3] - 2026-07-04
+
+### Added
+
+- `UniAgentModelCatalog` 추가: 모델 목록/기본 모델/모델별 토큰 예산을 원격 URL(선택)에서 갱신하고 `Library/UniAgentModelCatalogCache.json`에 캐시
+- 설정 패널에 `Catalog URL` 입력란과 `Refresh` 버튼 추가
+
+### Changed
+
+- Codex/Claude Code 모델 옵션과 세션 토큰 예산이 하드코딩 상수 대신 `UniAgentModelCatalog`를 통해 조회되도록 변경
+- 세션 토큰 예산이 선택된 모델을 기준으로 자동 계산되도록 변경(프로바이더/모델 변경 시 즉시 갱신)
+- `UniAgentChatWindow.cs`(4,676줄)를 책임별 partial 파일 11개로 분리(`Panels`, `ChatArea`, `Input`, `Environment`, `Run`, `Messages`, `Sessions`, `Status`, `History`, `UIHelpers`, `Types`)
+
 ## [1.0.2] - 2026-07-04
 
 ### Changed
