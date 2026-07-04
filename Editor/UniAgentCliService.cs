@@ -1120,6 +1120,7 @@ namespace Achieve.UniAgent.Editor
             psi.EnvironmentVariables["LANG"] = "en_US.UTF-8";
             psi.EnvironmentVariables["LC_ALL"] = "en_US.UTF-8";
             ApplyShellProxyEnvironment(psi);
+            ApplyWindowsCommandShellWrapper(psi);
 
             try
             {
@@ -1133,6 +1134,38 @@ namespace Achieve.UniAgent.Editor
             {
                 // Runtime may not expose encoding properties.
             }
+        }
+
+        /// <summary>
+        /// Windows에서 <c>Process.Start(UseShellExecute=false)</c>는 npm 전역 설치가 만드는
+        /// <c>codex.cmd</c>/<c>claude.cmd</c> 같은 배치 셸 스크립트를 직접 실행하지 못하고
+        /// "지정된 파일을 찾을 수 없습니다"로 실패한다(PE 실행파일이 아니라서). 터미널에서 같은 명령을
+        /// 치면 되는데 Unity 안에서만 안 되는 전형적인 증상이다. cmd.exe를 통해 실행하면 터미널에서
+        /// 직접 입력하는 것과 동일하게 PATH/PATHEXT 해석이 이뤄지므로, Windows에서는 항상 이렇게 감싼다.
+        /// </summary>
+        private static void ApplyWindowsCommandShellWrapper(ProcessStartInfo psi)
+        {
+            if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+            {
+                return;
+            }
+
+            if (string.IsNullOrWhiteSpace(psi.FileName) ||
+                string.Equals(psi.FileName, "cmd.exe", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(psi.FileName, "cmd", StringComparison.OrdinalIgnoreCase))
+            {
+                // 이미 cmd.exe를 직접 대상으로 하는 호출(예: where 조회 헬퍼)은 다시 감싸지 않는다.
+                return;
+            }
+
+            var originalFileName = psi.FileName;
+            var quotedFileName = originalFileName.IndexOf(' ') >= 0 ? $"\"{originalFileName}\"" : originalFileName;
+            var originalArguments = psi.Arguments;
+
+            psi.FileName = "cmd.exe";
+            psi.Arguments = string.IsNullOrEmpty(originalArguments)
+                ? $"/d /c {quotedFileName}"
+                : $"/d /c {quotedFileName} {originalArguments}";
         }
 
         /// <summary>

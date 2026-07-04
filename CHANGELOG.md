@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.0.8] - 2026-07-04
+
+### Fixed
+
+- Windows에서 Codex/Claude Code 로그인·실행 시 `Native error=지정된 파일을 찾을 수 없습니다`로 실패하던 문제 수정: npm 전역 설치로 만들어지는 `codex.cmd`/`claude.cmd` 배치 스크립트를 `Process.Start(UseShellExecute=false)`가 직접 실행하지 못해서(PE 실행파일이 아님) 터미널에서는 되는데 Unity 안에서만 실패하던 것을, Windows에서는 항상 `cmd.exe /d /c`로 감싸 실행하도록 고쳐 터미널과 동일하게 PATH/PATHEXT 해석이 이뤄지게 함
+
 ## [1.0.7] - 2026-07-04
 
 ### Fixed
