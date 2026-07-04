@@ -263,24 +263,7 @@ namespace Achieve.UniAgent.Editor
                     return TryResolveFirstLine("cmd.exe", $"/d /c where {commandName}", out resolvedPath);
                 }
 
-                var shellCandidates = new List<string>();
-                var envShell = Environment.GetEnvironmentVariable("SHELL");
-                if (!string.IsNullOrWhiteSpace(envShell))
-                {
-                    shellCandidates.Add(envShell);
-                }
-
-                if (!shellCandidates.Contains("/bin/zsh"))
-                {
-                    shellCandidates.Add("/bin/zsh");
-                }
-
-                if (!shellCandidates.Contains("/bin/bash"))
-                {
-                    shellCandidates.Add("/bin/bash");
-                }
-
-                foreach (var shell in shellCandidates)
+                foreach (var shell in GetUnixShellCandidates())
                 {
                     // -ilc: interactive + login shell so PATH additions in .zshrc/.bashrc/.zprofile
                     // (nvm, volta, homebrew, etc.) are sourced just like an interactive terminal.
@@ -296,6 +279,28 @@ namespace Achieve.UniAgent.Editor
             {
                 return false;
             }
+        }
+
+        private static List<string> GetUnixShellCandidates()
+        {
+            var shellCandidates = new List<string>();
+            var envShell = Environment.GetEnvironmentVariable("SHELL");
+            if (!string.IsNullOrWhiteSpace(envShell))
+            {
+                shellCandidates.Add(envShell);
+            }
+
+            if (!shellCandidates.Contains("/bin/zsh"))
+            {
+                shellCandidates.Add("/bin/zsh");
+            }
+
+            if (!shellCandidates.Contains("/bin/bash"))
+            {
+                shellCandidates.Add("/bin/bash");
+            }
+
+            return shellCandidates;
         }
 
         private static bool TryResolveFirstLine(string fileName, string arguments, out string resolvedPath)
@@ -1100,10 +1105,21 @@ namespace Achieve.UniAgent.Editor
             return int.TryParse(last.Groups[1].Value, out var parsed) ? parsed : (int?)null;
         }
 
+        private static readonly string[] ProxyEnvironmentKeys =
+        {
+            "HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "NO_PROXY",
+            "http_proxy", "https_proxy", "all_proxy", "no_proxy",
+            "ANTHROPIC_BASE_URL", "OPENAI_BASE_URL"
+        };
+
+        private static Dictionary<string, string> _cachedShellEnvironmentOverrides;
+        private static bool _shellEnvironmentResolved;
+
         private static void ConfigureUtf8Process(ProcessStartInfo psi)
         {
             psi.EnvironmentVariables["LANG"] = "en_US.UTF-8";
             psi.EnvironmentVariables["LC_ALL"] = "en_US.UTF-8";
+            ApplyShellProxyEnvironment(psi);
 
             try
             {
@@ -1116,6 +1132,119 @@ namespace Achieve.UniAgent.Editor
             catch
             {
                 // Runtime may not expose encoding properties.
+            }
+        }
+
+        /// <summary>
+        /// Unity 에디터(GUI 프로세스)가 상속하지 못하는 프록시 관련 환경변수를 로그인 셸에서 한 번만 읽어와,
+        /// 프로세스에 아직 값이 없는 키에 한해 채워 넣는다. Unity 자체 환경에 이미 설정된 값은 덮어쓰지 않는다.
+        /// 이걸 안 하면 터미널에서는 되는데(프록시 경유) Unity 안에서 실행한 codex/claude만 API 연결이
+        /// 거부되는(Connection refused) 상황이 생길 수 있다.
+        /// </summary>
+        private static void ApplyShellProxyEnvironment(ProcessStartInfo psi)
+        {
+            if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+            {
+                // Windows GUI 프로세스는 대개 시스템/사용자 환경변수를 그대로 상속하므로 생략한다.
+                return;
+            }
+
+            var overrides = GetShellEnvironmentOverrides();
+            if (overrides == null || overrides.Count == 0)
+            {
+                return;
+            }
+
+            foreach (var pair in overrides)
+            {
+                if (!psi.EnvironmentVariables.ContainsKey(pair.Key) || string.IsNullOrEmpty(psi.EnvironmentVariables[pair.Key]))
+                {
+                    psi.EnvironmentVariables[pair.Key] = pair.Value;
+                }
+            }
+        }
+
+        private static Dictionary<string, string> GetShellEnvironmentOverrides()
+        {
+            if (_shellEnvironmentResolved)
+            {
+                return _cachedShellEnvironmentOverrides;
+            }
+
+            _shellEnvironmentResolved = true;
+            _cachedShellEnvironmentOverrides = new Dictionary<string, string>();
+
+            try
+            {
+                foreach (var shell in GetUnixShellCandidates())
+                {
+                    if (!TryReadShellEnvironment(shell, out var envMap))
+                    {
+                        continue;
+                    }
+
+                    foreach (var key in ProxyEnvironmentKeys)
+                    {
+                        if (envMap.TryGetValue(key, out var value) && !string.IsNullOrWhiteSpace(value))
+                        {
+                            _cachedShellEnvironmentOverrides[key] = value;
+                        }
+                    }
+
+                    break;
+                }
+            }
+            catch
+            {
+                // Best-effort only; leave overrides empty on failure.
+            }
+
+            return _cachedShellEnvironmentOverrides;
+        }
+
+        private static bool TryReadShellEnvironment(string shell, out Dictionary<string, string> envMap)
+        {
+            envMap = new Dictionary<string, string>();
+            try
+            {
+                var psi = new ProcessStartInfo
+                {
+                    FileName = shell,
+                    // -ilc: interactive + login shell so the same rc files a terminal sources
+                    // (.zshrc/.bashrc/.zprofile, where proxy exports usually live) run here too.
+                    Arguments = "-ilc \"env\"",
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true,
+                    UseShellExecute = false,
+                    CreateNoWindow = true
+                };
+
+                using var process = new Process { StartInfo = psi };
+                process.Start();
+                var output = process.StandardOutput.ReadToEnd();
+                process.WaitForExit(8000);
+
+                foreach (var line in output.Split('\n'))
+                {
+                    var separatorIndex = line.IndexOf('=');
+                    if (separatorIndex <= 0)
+                    {
+                        continue;
+                    }
+
+                    var key = line.Substring(0, separatorIndex).Trim();
+                    var value = line.Substring(separatorIndex + 1).TrimEnd('\r');
+                    if (!string.IsNullOrEmpty(key))
+                    {
+                        envMap[key] = value;
+                    }
+                }
+
+                return envMap.Count > 0;
+            }
+            catch
+            {
+                return false;
             }
         }
     }

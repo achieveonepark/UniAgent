@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.0.7] - 2026-07-04
+
+### Fixed
+
+- 터미널에서는 되는데 Unity 안에서 실행한 codex/claude만 `API Error: Unable to connect to API (ConnectionRefused)`가 나던 문제 대응: Unity 에디터(GUI 프로세스)가 상속하지 못하는 `HTTP(S)_PROXY`/`ALL_PROXY`/`NO_PROXY`/`ANTHROPIC_BASE_URL`/`OPENAI_BASE_URL` 등을 로그인 셸에서 읽어와, 프로세스에 값이 없을 때만 채워 넣도록 함 (macOS/Linux; Windows는 보통 해당 없음)
+
 ## [1.0.6] - 2026-07-04
 
 ### Fixed
