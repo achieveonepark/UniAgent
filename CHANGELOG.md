@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.5] - 2026-07-04
+
+### Added
+
+- Unity Helper 메뉴 추가: `Tools/UniAgent/Unity Helper/Write Skill Template` — `.claude/skills/<이름>/SKILL.md` 뼈대 생성(Claude Code가 프로젝트 내에서 자동 인식)
+- Unity Helper 메뉴 추가: `Tools/UniAgent/Unity Helper/Check Unity MCP Status` — 프로젝트의 `.mcp.json`에 Unity MCP(공식 `com.unity.ai.assistant` 패키지) 항목이 있는지 확인하고, 없으면 Unity의 Project Settings > AI > Unity MCP > Integrations에서 Claude Code용으로 Configure하도록 안내
+
 ## [1.0.4] - 2026-07-04
 
 ### Added

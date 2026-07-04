@@ -19,6 +19,7 @@ namespace Achieve.UniAgent.Editor
         private const string MenuRoot = "Tools/UniAgent/Unity Helper/";
         private const string DefaultGeneratedPrefabFolder = "Assets/Res/Prefabs/CodexGenerated";
         private const string DefaultCsvTableFolder = "Assets/Resources/DataTables";
+        private const string ClaudeSkillsFolder = ".claude/skills";
         private static readonly Dictionary<string, Type> ComponentTypeCache = new Dictionary<string, Type>(StringComparer.Ordinal);
 
         [MenuItem(MenuRoot + "Apply Pending Actions")]
@@ -118,6 +119,91 @@ namespace Achieve.UniAgent.Editor
             AssetDatabase.ImportAsset(filePath, ImportAssetOptions.ForceUpdate);
             AssetDatabase.Refresh();
             Debug.Log($"Unity CSV table template written: {filePath}");
+        }
+
+        /// <summary>
+        /// Claude Code가 프로젝트에서 자동으로 찾는 <c>.claude/skills/&lt;이름&gt;/SKILL.md</c> 뼈대를 생성합니다.
+        /// 폴더 이름과 frontmatter의 name/description을 채운 뒤 프로젝트 루트에서 Claude Code CLI를 실행하면
+        /// 별도 등록 없이 자동으로 인식됩니다. Codex CLI는 동일한 Skills 개념을 사용하지 않습니다.
+        /// </summary>
+        [MenuItem(MenuRoot + "Write Skill Template")]
+        private static void WriteSkillTemplateMenu()
+        {
+            var skillsRootAbsolute = ToProjectAbsolutePath(ClaudeSkillsFolder);
+            var skillName = GetUniqueSkillFolderName(skillsRootAbsolute, "new-skill");
+            var skillMdPath = $"{ClaudeSkillsFolder}/{skillName}/SKILL.md";
+
+            var template =
+                "---\n" +
+                $"name: {skillName}\n" +
+                "description: Use this skill when <구체적인 트리거 상황을 적으세요>. <이 스킬이 하는 일을 한 줄로 요약하세요>.\n" +
+                "---\n\n" +
+                $"# {skillName}\n\n" +
+                "이 스킬이 호출되었을 때 Claude Code가 수행할 단계를 적으세요.\n\n" +
+                "1. ...\n" +
+                "2. ...\n";
+
+            if (!WriteUtf8File(skillMdPath, template, out var error))
+            {
+                Debug.LogError($"Skill template write failed: {error}");
+                return;
+            }
+
+            var absolutePath = ToProjectAbsolutePath(skillMdPath);
+            Debug.Log(
+                $"Claude Code skill template written: {skillMdPath}\n" +
+                "폴더명과 frontmatter의 name/description을 실제 스킬에 맞게 수정하세요. " +
+                "description은 Claude Code가 언제 이 스킬을 자동으로 트리거할지 판단하는 유일한 단서이므로 구체적으로 적어야 합니다.");
+            EditorUtility.RevealInFinder(absolutePath);
+        }
+
+        private static string GetUniqueSkillFolderName(string skillsRootAbsolute, string baseName)
+        {
+            var candidate = baseName;
+            var suffix = 1;
+            while (Directory.Exists(Path.Combine(skillsRootAbsolute, candidate)))
+            {
+                suffix++;
+                candidate = $"{baseName}-{suffix}";
+            }
+
+            return candidate;
+        }
+
+        /// <summary>
+        /// 프로젝트 루트의 <c>.mcp.json</c>을 읽어 Unity MCP(공식 com.unity.ai.assistant 패키지) 서버 항목이
+        /// 등록되어 있는지 확인합니다. Unity MCP는 Unity 자체의 Project Settings &gt; AI &gt; Unity MCP &gt;
+        /// Integrations 패널에서 Claude Code용으로 자동 설정할 수 있으므로, 여기서는 값을 직접 생성하지 않고
+        /// 현재 상태만 알려줍니다(플랫폼별 relay 실행 파일 경로를 잘못 추정해 깨진 설정을 쓰는 것을 피하기 위함).
+        /// </summary>
+        [MenuItem(MenuRoot + "Check Unity MCP Status")]
+        private static void CheckUnityMcpStatusMenu()
+        {
+            var mcpJsonPath = ToProjectAbsolutePath(".mcp.json");
+            if (!File.Exists(mcpJsonPath))
+            {
+                Debug.Log(
+                    "Unity MCP: 이 프로젝트에 .mcp.json이 없습니다.\n" +
+                    "Unity 에디터에서 Edit > Project Settings > AI > Unity MCP > Integrations로 이동해 " +
+                    "Claude Code를 선택하고 Configure를 누르면 이 CLI 세션에서 바로 인식되는 .mcp.json이 자동 생성됩니다.");
+                return;
+            }
+
+            string json;
+            try
+            {
+                json = File.ReadAllText(mcpJsonPath);
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"Unity MCP: .mcp.json을 읽지 못했습니다: {ex.Message}");
+                return;
+            }
+
+            var hasUnityEntry = json.IndexOf("unity", StringComparison.OrdinalIgnoreCase) >= 0;
+            Debug.Log(hasUnityEntry
+                ? $"Unity MCP: .mcp.json에 unity 관련 MCP 서버 항목이 있습니다 ({mcpJsonPath}). Claude Code 세션에서 자동으로 연결을 시도합니다(최초 1회 Unity 에디터에서 Accept 필요)."
+                : $"Unity MCP: .mcp.json은 있지만 unity 관련 항목이 보이지 않습니다 ({mcpJsonPath}). Unity의 Project Settings > AI > Unity MCP > Integrations에서 Claude Code Configure를 실행해 항목을 추가하세요.");
         }
 
         [MenuItem(MenuRoot + "Open Generated Prefab Folder")]
