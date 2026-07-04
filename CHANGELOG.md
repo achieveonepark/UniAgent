@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.0.2] - 2026-07-04
+
+### Changed
+
+- Claude Code 모델 기본값/선택 옵션을 최신 라인업으로 갱신 (`claude-sonnet-4-6` → `claude-sonnet-5`, `claude-opus-4-6` → `claude-opus-4-8`, `claude-haiku-4-5-20251001` 유지)
+
 ## [1.0.1] - 2026-05-13
 
 ### Added

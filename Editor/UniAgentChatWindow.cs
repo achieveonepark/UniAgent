@@ -146,7 +146,7 @@ namespace Achieve.UniAgent.Editor
         private const string DefaultModel = "gpt-5.5-codex";
         private const string DefaultReasoningEffort = "xhigh";
         private const string DefaultProvider = "Codex";
-        private const string DefaultClaudeModel = "claude-sonnet-4-6";
+        private const string DefaultClaudeModel = "claude-sonnet-5";
         private static readonly Color UiTextPrimary = new Color(0.93f, 0.95f, 0.98f, 1f);
         private static readonly Color UiTextSecondary = new Color(0.73f, 0.78f, 0.86f, 1f);
         private static readonly Color UiPanelBackground = new Color(0.10f, 0.13f, 0.18f, 0.95f);
@@ -173,8 +173,8 @@ namespace Achieve.UniAgent.Editor
         };
         private static readonly List<string> ClaudeModelOptions = new List<string>
         {
-            "claude-opus-4-6",
-            "claude-sonnet-4-6",
+            "claude-opus-4-8",
+            "claude-sonnet-5",
             "claude-haiku-4-5-20251001"
         };
         private static readonly List<string> ReasoningEffortOptions = new List<string>

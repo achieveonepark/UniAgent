@@ -42,7 +42,7 @@ namespace Achieve.UniAgent.Editor
         /// <summary>기본 Claude Code CLI 명령 이름입니다.</summary>
         public const string DefaultClaudeCliPath = "claude";
         /// <summary>기본 Claude Code CLI 모델 ID입니다.</summary>
-        public const string DefaultClaudeModel = "claude-sonnet-4-6";
+        public const string DefaultClaudeModel = "claude-sonnet-5";
 
         /// <summary>검색 순서대로 시도할 Claude Code CLI 실행 경로 목록입니다.</summary>
         public static readonly string[] ClaudeCliCandidates =
