@@ -99,6 +99,10 @@ namespace Achieve.UniAgent.Editor
         private int _sessionTokenUsed;
         private int _sessionTokenBudget = UniAgentCliConstants.DefaultSessionTokenBudget;
         private readonly Queue<int> _recentTurnTokenCosts = new Queue<int>();
+        /// <summary>세션 토큰 사용량이 예산의 이 비율을 넘으면 대화를 요약하고 새 CLI 스레드로 이어갑니다.</summary>
+        private const float AutoCompactThresholdRatio = 0.8f;
+        /// <summary>자동 압축으로 만든 대화 요약입니다. 다음 프롬프트에 한 번 삽입된 뒤 비워집니다.</summary>
+        private string _pendingCompactedContext = string.Empty;
 
         // Pending assistant animation state.
         private UniAgentChatMessage _pendingAssistantMessage;

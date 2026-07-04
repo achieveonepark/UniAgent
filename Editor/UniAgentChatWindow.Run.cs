@@ -92,6 +92,14 @@ namespace Achieve.UniAgent.Editor
                 sb.AppendLine("Prompt mode: Compact follow-up turn (reduced context for faster response).");
             }
 
+            if (!string.IsNullOrWhiteSpace(_pendingCompactedContext))
+            {
+                sb.AppendLine();
+                sb.AppendLine("Prior conversation summary (auto-compacted because the session neared its token budget):");
+                sb.AppendLine(_pendingCompactedContext);
+                _pendingCompactedContext = string.Empty;
+            }
+
             sb.AppendLine();
             sb.Append(UniAgentChatHelper.BuildPrompt(
                 userText,
@@ -170,6 +178,8 @@ namespace Achieve.UniAgent.Editor
                 {
                     CompletePendingAssistantMessage(finalText, ChatRole.Assistant, tokenSummary);
                 }
+
+                AutoCompactSessionIfNeeded();
                 SetBusy(false, $"Ready (turn tok: {FormatTokenCount(ComputeTurnTokenCost(result))})");
                 return;
             }
@@ -178,6 +188,82 @@ namespace Achieve.UniAgent.Editor
             var errorText = string.IsNullOrWhiteSpace(result.Message) ? $"{runProviderName} execution failed." : result.Message;
             CompletePendingAssistantMessage(errorText, ChatRole.Error, tokenSummary);
             SetBusy(false, $"{runProviderName} execution failed");
+        }
+
+        /// <summary>
+        /// 세션 토큰 사용량이 예산의 <see cref="AutoCompactThresholdRatio"/>를 넘으면 대화 이력을 요약하고
+        /// CLI 스레드를 새로 시작한다. 요약문은 <see cref="_pendingCompactedContext"/>에 저장되어
+        /// 다음 턴의 프롬프트에 한 번만 삽입된다.
+        /// </summary>
+        private void AutoCompactSessionIfNeeded()
+        {
+            if (_sessionTokenBudget <= 0 || string.IsNullOrWhiteSpace(_sessionId))
+            {
+                return;
+            }
+
+            if (_sessionTokenUsed < _sessionTokenBudget * AutoCompactThresholdRatio)
+            {
+                return;
+            }
+
+            var summary = BuildCompactionSummary();
+            var previousUsed = _sessionTokenUsed;
+            _pendingCompactedContext = summary;
+            _sessionId = string.Empty;
+            _sessionTokenUsed = EstimateSummaryTokenCost(summary);
+            _recentTurnTokenCosts.Clear();
+            SavePrefs();
+            UpdateTokenGaugeUI();
+
+            AddMessage(
+                ChatRole.System,
+                $"Context auto-compacted at {FormatTokenCount(previousUsed)} tokens ({AutoCompactThresholdRatio:P0} of budget). " +
+                $"Starting a fresh {GetProviderDisplayName()} thread seeded with a summary of the recent conversation.");
+        }
+
+        /// <summary>최근 대화 이력에서 사용자/어시스턴트 turn만 뽑아 글자 수 예산 안에서 요약 텍스트를 만든다.</summary>
+        private string BuildCompactionSummary()
+        {
+            const int maxMessages = 20;
+            const int charBudget = 6000;
+            const int perMessageCap = 800;
+
+            var sb = new StringBuilder();
+            var usedChars = 0;
+            var startIndex = Mathf.Max(0, _messages.Count - maxMessages);
+            for (var i = startIndex; i < _messages.Count; i++)
+            {
+                var message = _messages[i];
+                if (message == null || message.IsLoading || string.IsNullOrWhiteSpace(message.Text))
+                {
+                    continue;
+                }
+
+                if (message.Role != ChatRole.User && message.Role != ChatRole.Assistant)
+                {
+                    continue;
+                }
+
+                var line = message.Text.Length > perMessageCap
+                    ? message.Text.Substring(0, perMessageCap) + "..."
+                    : message.Text;
+                var entry = $"[{message.Role}] {line}";
+                if (usedChars + entry.Length > charBudget)
+                {
+                    break;
+                }
+
+                sb.AppendLine(entry);
+                usedChars += entry.Length;
+            }
+
+            return sb.ToString().TrimEnd();
+        }
+
+        private static int EstimateSummaryTokenCost(string summary)
+        {
+            return string.IsNullOrWhiteSpace(summary) ? 0 : Mathf.Max(0, summary.Length / 4);
         }
 
         private static void DispatchRunResult(UniAgentRunResult result, bool diffPreviewTurn)
