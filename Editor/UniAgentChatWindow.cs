@@ -104,6 +104,7 @@ namespace Achieve.UniAgent.Editor
         private UniAgentChatMessage _pendingAssistantMessage;
         private IVisualElementScheduledItem _pendingAnimationItem;
         private int _pendingDotCount;
+        private double _pendingStartRealtime;
         private string _pendingProgressText = "Preparing request";
         private readonly List<string> _pendingProgressLines = new List<string>();
         private readonly object _progressUpdateLock = new object();

@@ -85,6 +85,7 @@ namespace Achieve.UniAgent.Editor
             }
 
             _pendingDotCount = 0;
+            _pendingStartRealtime = EditorApplication.timeSinceStartup;
             _pendingProgressText = "Preparing request";
             _pendingProgressLines.Clear();
             _pendingProgressLines.Add(_pendingProgressText);
@@ -92,7 +93,7 @@ namespace Achieve.UniAgent.Editor
             {
                 existingMessage.IsLoading = true;
                 existingMessage.Role = ChatRole.Assistant;
-                existingMessage.Text = BuildThinkingText(_pendingDotCount, _pendingProgressLines, GetProviderDisplayName());
+                existingMessage.Text = BuildThinkingText(_pendingDotCount, _pendingProgressLines, GetProviderDisplayName(), 0d);
                 existingMessage.Time = DateTime.Now.ToString("HH:mm:ss");
                 existingMessage.TokenSummary = null;
                 _pendingAssistantMessage = existingMessage;
@@ -100,7 +101,7 @@ namespace Achieve.UniAgent.Editor
             }
             else
             {
-                _pendingAssistantMessage = AddMessage(ChatRole.Assistant, BuildThinkingText(_pendingDotCount, _pendingProgressLines, GetProviderDisplayName()), null, true);
+                _pendingAssistantMessage = AddMessage(ChatRole.Assistant, BuildThinkingText(_pendingDotCount, _pendingProgressLines, GetProviderDisplayName(), 0d), null, true);
             }
 
             _pendingAnimationItem = rootVisualElement.schedule.Execute(() =>
@@ -112,9 +113,10 @@ namespace Achieve.UniAgent.Editor
                 }
 
                 _pendingDotCount = (_pendingDotCount + 1) % 4;
-                _pendingAssistantMessage.Text = BuildThinkingText(_pendingDotCount, _pendingProgressLines, GetProviderDisplayName());
+                var elapsed = EditorApplication.timeSinceStartup - _pendingStartRealtime;
+                _pendingAssistantMessage.Text = BuildThinkingText(_pendingDotCount, _pendingProgressLines, GetProviderDisplayName(), elapsed);
                 RefreshChatUI();
-            }).Every(450);
+            }).Every(300);
         }
 
         private void QueueCliProgressUpdate(string progressText)
@@ -171,7 +173,8 @@ namespace Achieve.UniAgent.Editor
                 _pendingProgressLines.RemoveAt(0);
             }
 
-            _pendingAssistantMessage.Text = BuildThinkingText(_pendingDotCount, _pendingProgressLines, GetProviderDisplayName());
+            var elapsed = EditorApplication.timeSinceStartup - _pendingStartRealtime;
+            _pendingAssistantMessage.Text = BuildThinkingText(_pendingDotCount, _pendingProgressLines, GetProviderDisplayName(), elapsed);
             RefreshChatUI();
             ScrollToBottom();
         }
@@ -279,9 +282,9 @@ namespace Achieve.UniAgent.Editor
             SetStatus("Ready");
         }
 
-        private static string BuildThinkingText(int dotCount, List<string> progressLines, string agentName = "Agent")
+        private static string BuildThinkingText(int dotCount, List<string> progressLines, string agentName, double elapsedSeconds)
         {
-            var title = $"{agentName} is thinking" + new string('.', dotCount);
+            var title = $"{agentName} is thinking" + new string('.', dotCount) + FormatElapsedSuffix(elapsedSeconds);
             if (progressLines == null || progressLines.Count == 0)
             {
                 return title + "\nWorking...";
@@ -297,10 +300,40 @@ namespace Achieve.UniAgent.Editor
                     continue;
                 }
 
-                sb.Append("- ").AppendLine(line);
+                sb.Append(GetProgressLineIcon(line)).Append(' ').AppendLine(line);
             }
 
             return sb.ToString().TrimEnd();
+        }
+
+        /// <summary>경과 시간을 "(12s)"/"(1m 05s)" 형태의 접미사로 만듭니다. 1초 미만이면 빈 문자열입니다.</summary>
+        private static string FormatElapsedSuffix(double elapsedSeconds)
+        {
+            var totalSeconds = (int)Math.Floor(Math.Max(0d, elapsedSeconds));
+            if (totalSeconds < 1)
+            {
+                return string.Empty;
+            }
+
+            if (totalSeconds < 60)
+            {
+                return $" ({totalSeconds}s)";
+            }
+
+            var minutes = totalSeconds / 60;
+            var seconds = totalSeconds % 60;
+            return $" ({minutes}m {seconds:00}s)";
+        }
+
+        /// <summary>진행 상황 한 줄의 내용을 보고 어울리는 아이콘을 고릅니다. 실행/읽기/편집/검색 여부를 대략적으로 구분합니다.</summary>
+        private static string GetProgressLineIcon(string line)
+        {
+            var lower = line.ToLowerInvariant();
+            if (lower.Contains("read") || lower.Contains("읽")) return "📄";
+            if (lower.Contains("write") || lower.Contains("edit") || lower.Contains("patch") || lower.Contains("apply") || lower.Contains("작성") || lower.Contains("수정")) return "✏️";
+            if (lower.Contains("search") || lower.Contains("grep") || lower.Contains("find") || lower.Contains("검색")) return "🔍";
+            if (lower.Contains("run") || lower.Contains("shell") || lower.Contains("command") || lower.Contains("exec") || lower.Contains("실행")) return "⚙️";
+            return "•";
         }
 
         private void RefreshChatUI()
