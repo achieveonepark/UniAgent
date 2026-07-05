@@ -80,13 +80,13 @@ namespace Achieve.UniAgent.Editor
             StopPendingAssistantAnimation();
             lock (_progressUpdateLock)
             {
-                _queuedProgressText = null;
+                _queuedProgressTexts.Clear();
                 _progressDispatchPending = false;
             }
 
             _pendingDotCount = 0;
             _pendingStartRealtime = EditorApplication.timeSinceStartup;
-            _pendingProgressText = "Preparing request";
+            _pendingProgressText = LocalizeProgressText("Preparing request");
             _pendingProgressLines.Clear();
             _pendingProgressLines.Add(_pendingProgressText);
             if (existingMessage != null)
@@ -128,7 +128,7 @@ namespace Achieve.UniAgent.Editor
 
             lock (_progressUpdateLock)
             {
-                _queuedProgressText = progressText;
+                _queuedProgressTexts.Enqueue(progressText);
                 if (_progressDispatchPending)
                 {
                     return;
@@ -142,15 +142,21 @@ namespace Achieve.UniAgent.Editor
 
         private void ApplyQueuedProgressUpdate()
         {
-            string textToApply;
+            var textsToApply = new List<string>();
             lock (_progressUpdateLock)
             {
-                textToApply = _queuedProgressText;
-                _queuedProgressText = null;
+                while (_queuedProgressTexts.Count > 0)
+                {
+                    textsToApply.Add(_queuedProgressTexts.Dequeue());
+                }
+
                 _progressDispatchPending = false;
             }
 
-            UpdatePendingProgressText(textToApply);
+            for (var i = 0; i < textsToApply.Count; i++)
+            {
+                UpdatePendingProgressText(textsToApply[i]);
+            }
         }
 
         private void UpdatePendingProgressText(string progressText)
@@ -160,7 +166,7 @@ namespace Achieve.UniAgent.Editor
                 return;
             }
 
-            var normalized = NormalizeProgressText(progressText);
+            var normalized = NormalizeProgressText(LocalizeProgressText(progressText));
             if (string.IsNullOrWhiteSpace(normalized) || string.Equals(normalized, _pendingProgressText, StringComparison.Ordinal))
             {
                 return;
@@ -168,7 +174,7 @@ namespace Achieve.UniAgent.Editor
 
             _pendingProgressText = normalized;
             _pendingProgressLines.Add(normalized);
-            if (_pendingProgressLines.Count > 4)
+            if (_pendingProgressLines.Count > 6)
             {
                 _pendingProgressLines.RemoveAt(0);
             }
@@ -211,7 +217,7 @@ namespace Achieve.UniAgent.Editor
             StopPendingAssistantAnimation();
             lock (_progressUpdateLock)
             {
-                _queuedProgressText = null;
+                _queuedProgressTexts.Clear();
                 _progressDispatchPending = false;
             }
             _pendingProgressText = string.Empty;
@@ -282,12 +288,14 @@ namespace Achieve.UniAgent.Editor
             SetStatus("Ready");
         }
 
-        private static string BuildThinkingText(int dotCount, List<string> progressLines, string agentName, double elapsedSeconds)
+        private string BuildThinkingText(int dotCount, List<string> progressLines, string agentName, double elapsedSeconds)
         {
-            var title = $"{agentName} is thinking" + new string('.', dotCount) + FormatElapsedSuffix(elapsedSeconds);
+            var title = IsKoreanProgressLanguage()
+                ? $"{agentName} 생각 중" + new string('.', dotCount) + FormatElapsedSuffix(elapsedSeconds)
+                : $"{agentName} is thinking" + new string('.', dotCount) + FormatElapsedSuffix(elapsedSeconds);
             if (progressLines == null || progressLines.Count == 0)
             {
-                return title + "\nWorking...";
+                return title + "\n" + LocalizeProgressText("Working...");
             }
 
             var sb = new StringBuilder();
@@ -304,6 +312,106 @@ namespace Achieve.UniAgent.Editor
             }
 
             return sb.ToString().TrimEnd();
+        }
+
+        private string ResolveActiveProgressLanguage(string promptText)
+        {
+            var selected = NormalizeOption(_progressLanguage, ProgressLanguageOptions, DefaultProgressLanguage);
+            if (string.Equals(selected, ProgressLanguageKorean, StringComparison.Ordinal))
+            {
+                return ProgressLanguageKorean;
+            }
+
+            if (string.Equals(selected, ProgressLanguageEnglish, StringComparison.Ordinal))
+            {
+                return ProgressLanguageEnglish;
+            }
+
+            return ContainsKoreanText(promptText) ? ProgressLanguageKorean : ProgressLanguageEnglish;
+        }
+
+        private bool IsKoreanProgressLanguage()
+        {
+            return string.Equals(_activeProgressLanguage, ProgressLanguageKorean, StringComparison.Ordinal);
+        }
+
+        private string BuildBusyStatusText(string agentName, bool diffPreview)
+        {
+            if (IsKoreanProgressLanguage())
+            {
+                return diffPreview ? $"{agentName} 변경 미리보기 생성 중..." : $"{agentName} 생각 중...";
+            }
+
+            return diffPreview ? $"{agentName} is generating diff preview..." : $"{agentName} is thinking...";
+        }
+
+        private static bool ContainsKoreanText(string text)
+        {
+            if (string.IsNullOrEmpty(text))
+            {
+                return false;
+            }
+
+            for (var i = 0; i < text.Length; i++)
+            {
+                var ch = text[i];
+                if ((ch >= '\uAC00' && ch <= '\uD7A3') ||
+                    (ch >= '\u3130' && ch <= '\u318F') ||
+                    (ch >= '\u1100' && ch <= '\u11FF'))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private string LocalizeProgressText(string text)
+        {
+            if (!IsKoreanProgressLanguage() || string.IsNullOrWhiteSpace(text))
+            {
+                return text;
+            }
+
+            var trimmed = text.Trim();
+            switch (trimmed)
+            {
+                case "Preparing request":
+                    return "요청 준비 중";
+                case "Working...":
+                    return "작업 중...";
+                case "Initialized agent session":
+                    return "세션 초기화 완료";
+                case "Contacting model API":
+                    return "모델 API 연결 중";
+                case "Checked rate limit":
+                    return "사용량 제한 확인 완료";
+                case "Received assistant answer":
+                    return "응답 수신 완료";
+                case "Received final response":
+                    return "최종 응답 수신 완료";
+                case "Assistant started responding":
+                    return "응답 생성 시작";
+                case "Running tool":
+                    return "도구 실행 중";
+                case "Drafting response":
+                    return "응답 작성 중";
+                case "Preparing tool input":
+                    return "도구 입력 준비 중";
+                case "Wrapping up response":
+                    return "응답 정리 중";
+                case "Finalizing response":
+                    return "응답 마무리 중";
+            }
+
+            const string runningPrefix = "Running ";
+            if (trimmed.StartsWith(runningPrefix, StringComparison.Ordinal))
+            {
+                var toolName = trimmed.Substring(runningPrefix.Length).Trim();
+                return string.IsNullOrEmpty(toolName) ? "도구 실행 중" : $"도구 실행 중: {toolName}";
+            }
+
+            return text;
         }
 
         /// <summary>경과 시간을 "(12s)"/"(1m 05s)" 형태의 접미사로 만듭니다. 1초 미만이면 빈 문자열입니다.</summary>

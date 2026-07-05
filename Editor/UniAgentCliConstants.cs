@@ -29,6 +29,8 @@ namespace Achieve.UniAgent.Editor
         public const string ChatHistoryFileName = "CodexChatHistory.json";
         /// <summary>프로젝트 로컬 Unity Action Bridge 파일명입니다.</summary>
         public const string UnityActionFileName = "CodexUnityActions.json";
+        /// <summary>스크립트 리로드 이후 적용할 Unity Action Bridge 파일명입니다.</summary>
+        public const string DeferredUnityActionFileName = "CodexUnityActions.deferred.json";
 
         /// <summary>
         /// 사용자 홈 디렉터리입니다. Unity 에디터(GUI 프로세스)는 터미널과 달리 nvm/volta 등이

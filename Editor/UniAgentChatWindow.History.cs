@@ -393,6 +393,7 @@ namespace Achieve.UniAgent.Editor
                 _useProjectCodexHome,
                 GetProjectCodexHome(),
                 fullAutoForCurrentMode,
+                provider == CliProvider.ClaudeCode && _claudeAutoAcceptEdits,
                 model,
                 reasoningEffort,
                 UniAgentCliConstants.DefaultExecTimeoutMs,

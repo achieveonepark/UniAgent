@@ -65,6 +65,7 @@ namespace Achieve.UniAgent.Editor
         private VisualElement _codexModelRow;
         private VisualElement _claudeModelRow;
         private VisualElement _reasoningRow;
+        private VisualElement _claudeAutoAcceptEditsRow;
         private VisualElement _codexCliPathRow;
         private VisualElement _claudeCliPathRow;
         private Label _modelCatalogStatusLabel;
@@ -81,10 +82,13 @@ namespace Achieve.UniAgent.Editor
         private bool _disableSceneReloadOnPlay;
         private bool _manualRefreshMode = true;
         private bool _buildDiffPreviewMode;
+        private bool _claudeAutoAcceptEdits;
         private string _selectedModel = DefaultModel;
         private string _selectedReasoningEffort = DefaultReasoningEffort;
         private string _selectedProvider = DefaultProvider;
         private string _selectedClaudeModel = DefaultClaudeModel;
+        private string _progressLanguage = DefaultProgressLanguage;
+        private string _activeProgressLanguage = ProgressLanguageEnglish;
 
         // UI/session state.
         private bool _isBusy;
@@ -105,6 +109,7 @@ namespace Achieve.UniAgent.Editor
         private const float AutoCompactThresholdRatio = 0.8f;
         /// <summary>자동 압축으로 만든 대화 요약입니다. 다음 프롬프트에 한 번 삽입된 뒤 비워집니다.</summary>
         private string _pendingCompactedContext = string.Empty;
+        private HashSet<string> _cSharpFilesBeforeRun;
 
         // Pending assistant animation state.
         private UniAgentChatMessage _pendingAssistantMessage;
@@ -114,7 +119,7 @@ namespace Achieve.UniAgent.Editor
         private string _pendingProgressText = "Preparing request";
         private readonly List<string> _pendingProgressLines = new List<string>();
         private readonly object _progressUpdateLock = new object();
-        private string _queuedProgressText;
+        private readonly Queue<string> _queuedProgressTexts = new Queue<string>();
         private bool _progressDispatchPending;
         private int _activeMentionStartIndex = -1;
         private string _activeMentionQuery = string.Empty;
@@ -156,6 +161,10 @@ namespace Achieve.UniAgent.Editor
         private const string DefaultReasoningEffort = "xhigh";
         private const string DefaultProvider = "Codex";
         private static string DefaultClaudeModel => UniAgentModelCatalog.GetDefaultModel(CliProvider.ClaudeCode);
+        private const string ProgressLanguageAuto = "Auto";
+        private const string ProgressLanguageKorean = "Korean";
+        private const string ProgressLanguageEnglish = "English";
+        private const string DefaultProgressLanguage = ProgressLanguageAuto;
         private static readonly Color UiTextPrimary = new Color(0.93f, 0.95f, 0.98f, 1f);
         private static readonly Color UiTextSecondary = new Color(0.73f, 0.78f, 0.86f, 1f);
         private static readonly Color UiPanelBackground = new Color(0.10f, 0.13f, 0.18f, 0.95f);
@@ -185,6 +194,12 @@ namespace Achieve.UniAgent.Editor
             "medium",
             "high",
             "xhigh"
+        };
+        private static readonly List<string> ProgressLanguageOptions = new List<string>
+        {
+            ProgressLanguageAuto,
+            ProgressLanguageKorean,
+            ProgressLanguageEnglish
         };
 
         /// <summary>

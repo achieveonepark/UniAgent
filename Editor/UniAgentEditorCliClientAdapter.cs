@@ -54,7 +54,8 @@ namespace Achieve.UniAgent.Editor
                 UniAgentCommandResult command;
 
                 // Editor는 CLI Device Auth가 로그인 표준입니다.
-                if (loginRequest.UseDeviceAuth || string.IsNullOrWhiteSpace(loginRequest.BackendSessionToken))
+                var attemptedCliLogin = loginRequest.UseDeviceAuth || string.IsNullOrWhiteSpace(loginRequest.BackendSessionToken);
+                if (attemptedCliLogin)
                 {
                     command = service.LoginWithDeviceAuth();
                 }
@@ -68,13 +69,16 @@ namespace Achieve.UniAgent.Editor
                 }
 
                 var status = service.QueryLoginStatus();
-                SetAuthState(status.Success);
+                var loginSucceeded = command.Success || (attemptedCliLogin && status.Success);
+                SetAuthState(loginSucceeded);
 
                 return new UniAgentResult
                 {
-                    Success = command.Success,
-                    Message = command.Message,
-                    ErrorCode = command.Success ? UniAgentErrorCode.None : MapErrorCode(command.Message)
+                    Success = loginSucceeded,
+                    Message = loginSucceeded && !command.Success
+                        ? "Login completed. Verified by CLI auth status."
+                        : command.Message,
+                    ErrorCode = loginSucceeded ? UniAgentErrorCode.None : MapErrorCode(command.Message)
                 };
             }, ct);
         }

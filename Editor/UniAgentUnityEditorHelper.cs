@@ -51,6 +51,19 @@ namespace Achieve.UniAgent.Editor
                 {
                     new UniAgentUnityAction
                     {
+                        type = "CreatePrimitivePrefab",
+                        primitiveType = "Cube",
+                        objectName = "GuideCube",
+                        prefabName = "GuideCubePrefab",
+                        outputFolder = DefaultGeneratedPrefabFolder,
+                        setScale = true,
+                        scaleX = 1f,
+                        scaleY = 1f,
+                        scaleZ = 1f,
+                        overwriteExisting = false
+                    },
+                    new UniAgentUnityAction
+                    {
                         type = "CreateSpriteObject",
                         objectName = "GuideCat",
                         spritePath = "Assets/Res/Sprites/Cat/Cat_01.png",
@@ -62,6 +75,15 @@ namespace Achieve.UniAgent.Editor
                         scaleX = 1f,
                         scaleY = 1f,
                         scaleZ = 1f
+                    },
+                    new UniAgentUnityAction
+                    {
+                        type = "CreateSpritePrefab",
+                        objectName = "GuideCatPrefabRoot",
+                        spritePath = "Assets/Res/Sprites/Cat/Cat_01.png",
+                        prefabName = "GuideCatSpritePrefab",
+                        outputFolder = DefaultGeneratedPrefabFolder,
+                        overwriteExisting = false
                     },
                     new UniAgentUnityAction
                     {
@@ -231,16 +253,45 @@ namespace Achieve.UniAgent.Editor
         /// </summary>
         public static bool TryApplyPendingActions(out string summary)
         {
-            summary = string.Empty;
             var actionPath = UniAgentChatHelper.GetUnityActionFilePath();
             if (!File.Exists(actionPath))
             {
+                summary = string.Empty;
                 return false;
             }
 
+            return TryApplyActionFile(actionPath, true, "Unity action", out summary);
+        }
+
+        /// <summary>
+        /// 스크립트 리로드 이후로 미뤄 둔 액션 파일이 있으면 적용합니다.
+        /// </summary>
+        public static bool TryApplyDeferredActions(out string summary)
+        {
+            var actionPath = UniAgentChatHelper.GetDeferredUnityActionFilePath();
+            if (!File.Exists(actionPath))
+            {
+                summary = string.Empty;
+                return false;
+            }
+
+            return TryApplyActionFile(actionPath, false, "Deferred Unity action", out summary);
+        }
+
+        /// <summary>
+        /// 스크립트 리로드 이후로 미뤄 둔 액션 파일이 있는지 반환합니다.
+        /// </summary>
+        public static bool HasDeferredActionRequest()
+        {
+            return File.Exists(UniAgentChatHelper.GetDeferredUnityActionFilePath());
+        }
+
+        private static bool TryApplyActionFile(string actionPath, bool allowDeferral, string resultTitle, out string summary)
+        {
+            summary = string.Empty;
             if (EditorApplication.isPlayingOrWillChangePlaymode)
             {
-                summary = "Unity action apply skipped: editor is in play mode.";
+                summary = $"{resultTitle} apply skipped: editor is in play mode.";
                 return true;
             }
 
@@ -251,7 +302,7 @@ namespace Achieve.UniAgent.Editor
             }
             catch (Exception ex)
             {
-                summary = $"Unity action apply failed while reading request file: {ex.Message}";
+                summary = $"{resultTitle} apply failed while reading request file: {ex.Message}";
                 return true;
             }
 
@@ -259,7 +310,7 @@ namespace Achieve.UniAgent.Editor
 
             if (string.IsNullOrWhiteSpace(json))
             {
-                summary = "Unity action request file was empty.";
+                summary = $"{resultTitle} request file was empty.";
                 return true;
             }
 
@@ -270,19 +321,57 @@ namespace Achieve.UniAgent.Editor
             }
             catch (Exception ex)
             {
-                summary = $"Unity action request JSON is invalid: {ex.Message}";
+                summary = $"{resultTitle} request JSON is invalid: {ex.Message}";
                 return true;
             }
 
             if (request == null || request.actions == null || request.actions.Length == 0)
             {
-                summary = "Unity action request has no actions.";
+                summary = $"{resultTitle} request has no actions.";
                 return true;
             }
 
+            if (allowDeferral && request.deferUntilScriptsReloaded)
+            {
+                if (!TryWriteDeferredActionRequest(json, out var deferredError))
+                {
+                    summary = $"{resultTitle} deferral failed: {deferredError}";
+                    return true;
+                }
+
+                summary =
+                    $"{resultTitle} deferred until scripts reload\n"
+                    + $"- File: {Path.GetFileName(UniAgentChatHelper.GetDeferredUnityActionFilePath())}\n"
+                    + "- Unity script refresh/compilation is required before these actions can be applied.";
+                return true;
+            }
+
+            return TryApplyActionRequest(request, resultTitle, out summary);
+        }
+
+        private static bool TryWriteDeferredActionRequest(string json, out string error)
+        {
+            error = string.Empty;
+            try
+            {
+                var deferredPath = UniAgentChatHelper.GetDeferredUnityActionFilePath();
+                Directory.CreateDirectory(Path.GetDirectoryName(deferredPath) ?? "Library");
+                File.WriteAllText(deferredPath, json ?? string.Empty);
+                return true;
+            }
+            catch (Exception ex)
+            {
+                error = ex.Message;
+                return false;
+            }
+        }
+
+        private static bool TryApplyActionRequest(UniAgentUnityActionRequest request, string resultTitle, out string summary)
+        {
+            summary = string.Empty;
             if (!TryResolveScenePath(request.scene, out var scenePath, out var sceneError))
             {
-                summary = $"Unity action apply failed: scene resolve failed ({sceneError}).";
+                summary = $"{resultTitle} apply failed: scene resolve failed ({sceneError}).";
                 return true;
             }
 
@@ -318,7 +407,7 @@ namespace Achieve.UniAgent.Editor
                 }
 
                 summary =
-                    "Unity action result\n"
+                    resultTitle + " result\n"
                     + $"- Scene: {Path.GetFileNameWithoutExtension(scenePath)}\n"
                     + $"- Applied: {appliedCount}\n"
                     + $"- Skipped: {skippedCount}\n"
@@ -327,7 +416,7 @@ namespace Achieve.UniAgent.Editor
             }
             catch (Exception ex)
             {
-                summary = $"Unity action apply failed: {ex.Message}";
+                summary = $"{resultTitle} apply failed: {ex.Message}";
             }
             finally
             {
@@ -390,6 +479,21 @@ namespace Achieve.UniAgent.Editor
                 return TryCreateSpriteObject(scene, action, log);
             }
 
+            if (actionType.Equals("CreateSpritePrefab", StringComparison.OrdinalIgnoreCase))
+            {
+                return TryCreateSpritePrefab(scene, action, log);
+            }
+
+            if (actionType.Equals("CreatePrimitiveObject", StringComparison.OrdinalIgnoreCase))
+            {
+                return TryCreatePrimitiveObject(scene, action, log);
+            }
+
+            if (actionType.Equals("CreatePrimitivePrefab", StringComparison.OrdinalIgnoreCase))
+            {
+                return TryCreatePrimitivePrefab(scene, action, log);
+            }
+
             if (actionType.Equals("SavePrefabFromTarget", StringComparison.OrdinalIgnoreCase))
             {
                 return TrySavePrefabFromTarget(scene, action, log);
@@ -402,6 +506,157 @@ namespace Achieve.UniAgent.Editor
 
             log.AppendLine($"- Failed: unsupported action type `{actionType}`.");
             return ActionOutcome.Failed;
+        }
+
+        private static ActionOutcome TryCreatePrimitiveObject(Scene scene, UniAgentUnityAction action, StringBuilder log)
+        {
+            if (!TryCreatePrimitiveGameObject(scene, action, true, out var gameObject, out var error))
+            {
+                log.AppendLine($"- Failed to create primitive object: {error}");
+                return ActionOutcome.Failed;
+            }
+
+            EditorSceneManager.MarkSceneDirty(scene);
+            log.AppendLine(
+                $"- Created primitive `{GetHierarchyPath(gameObject.transform)}` ({NormalizePrimitiveTypeName(action.primitiveType)}).");
+            return ActionOutcome.Applied;
+        }
+
+        private static ActionOutcome TryCreatePrimitivePrefab(Scene scene, UniAgentUnityAction action, StringBuilder log)
+        {
+            GameObject gameObject = null;
+            try
+            {
+                if (!TryCreatePrimitiveGameObject(scene, action, false, out gameObject, out var createError))
+                {
+                    log.AppendLine($"- Failed to create primitive prefab: {createError}");
+                    return ActionOutcome.Failed;
+                }
+
+                var requestedFolder = string.IsNullOrWhiteSpace(action.outputFolder)
+                    ? DefaultGeneratedPrefabFolder
+                    : action.outputFolder.Trim();
+                if (!TryResolveWritableAssetFolderPath(requestedFolder, out var outputFolder, out var folderError))
+                {
+                    log.AppendLine($"- Failed to create primitive prefab: {folderError}");
+                    return ActionOutcome.Failed;
+                }
+
+                var baseNameRaw = !string.IsNullOrWhiteSpace(action.prefabName)
+                    ? action.prefabName.Trim()
+                    : (!string.IsNullOrWhiteSpace(action.objectName) ? action.objectName.Trim() : NormalizePrimitiveTypeName(action.primitiveType));
+                var baseName = SanitizeAssetName(baseNameRaw, "PrimitivePrefab");
+                var targetPath = $"{outputFolder}/{baseName}.prefab";
+                if (AssetDatabase.LoadAssetAtPath<GameObject>(targetPath) != null && !action.overwriteExisting)
+                {
+                    targetPath = GetUniqueAssetFilePath(outputFolder, baseName, ".prefab");
+                }
+
+                var prefab = PrefabUtility.SaveAsPrefabAsset(gameObject, targetPath, out var success);
+                if (!success || prefab == null)
+                {
+                    log.AppendLine($"- Failed to create primitive prefab: Unity could not write `{targetPath}`.");
+                    return ActionOutcome.Failed;
+                }
+
+                AssetDatabase.ImportAsset(targetPath, ImportAssetOptions.ForceUpdate);
+                log.AppendLine($"- Created primitive prefab `{targetPath}` ({NormalizePrimitiveTypeName(action.primitiveType)}).");
+                return ActionOutcome.Applied;
+            }
+            finally
+            {
+                if (gameObject != null)
+                {
+                    UnityEngine.Object.DestroyImmediate(gameObject);
+                }
+            }
+        }
+
+        private static bool TryCreatePrimitiveGameObject(
+            Scene scene,
+            UniAgentUnityAction action,
+            bool registerUndo,
+            out GameObject gameObject,
+            out string error)
+        {
+            gameObject = null;
+            error = string.Empty;
+
+            if (!TryParsePrimitiveType(action.primitiveType, out var primitiveType, out error))
+            {
+                return false;
+            }
+
+            gameObject = GameObject.CreatePrimitive(primitiveType);
+            gameObject.name = string.IsNullOrWhiteSpace(action.objectName)
+                ? NormalizePrimitiveTypeName(action.primitiveType)
+                : action.objectName.Trim();
+            SceneManager.MoveGameObjectToScene(gameObject, scene);
+
+            if (registerUndo)
+            {
+                Undo.RegisterCreatedObjectUndo(gameObject, "Create primitive object");
+            }
+
+            ApplyTransformOptions(gameObject.transform, action);
+            return true;
+        }
+
+        private static void ApplyTransformOptions(Transform transform, UniAgentUnityAction action)
+        {
+            if (transform == null || action == null)
+            {
+                return;
+            }
+
+            if (action.setPosition)
+            {
+                transform.position = new Vector3(action.posX, action.posY, action.posZ);
+            }
+
+            if (action.setScale)
+            {
+                transform.localScale = new Vector3(
+                    Mathf.Approximately(action.scaleX, 0f) ? 1f : action.scaleX,
+                    Mathf.Approximately(action.scaleY, 0f) ? 1f : action.scaleY,
+                    Mathf.Approximately(action.scaleZ, 0f) ? 1f : action.scaleZ);
+            }
+        }
+
+        private static bool TryParsePrimitiveType(string rawPrimitiveType, out PrimitiveType primitiveType, out string error)
+        {
+            error = string.Empty;
+            var normalized = NormalizePrimitiveTypeName(rawPrimitiveType);
+            switch (normalized.ToLowerInvariant())
+            {
+                case "cube":
+                    primitiveType = PrimitiveType.Cube;
+                    return true;
+                case "sphere":
+                    primitiveType = PrimitiveType.Sphere;
+                    return true;
+                case "capsule":
+                    primitiveType = PrimitiveType.Capsule;
+                    return true;
+                case "cylinder":
+                    primitiveType = PrimitiveType.Cylinder;
+                    return true;
+                case "plane":
+                    primitiveType = PrimitiveType.Plane;
+                    return true;
+                case "quad":
+                    primitiveType = PrimitiveType.Quad;
+                    return true;
+                default:
+                    primitiveType = PrimitiveType.Cube;
+                    error = $"unsupported primitiveType `{rawPrimitiveType}`. Use Cube, Sphere, Capsule, Cylinder, Plane, or Quad.";
+                    return false;
+            }
+        }
+
+        private static string NormalizePrimitiveTypeName(string rawPrimitiveType)
+        {
+            return string.IsNullOrWhiteSpace(rawPrimitiveType) ? "Cube" : rawPrimitiveType.Trim();
         }
 
         private static ActionOutcome TrySavePrefabFromTarget(Scene scene, UniAgentUnityAction action, StringBuilder log)
@@ -660,6 +915,133 @@ namespace Achieve.UniAgent.Editor
             log.AppendLine(
                 $"- Created sprite object `{GetHierarchyPath(gameObject.transform)}` from `{spriteAssetPath}`.");
             return ActionOutcome.Applied;
+        }
+
+        private static ActionOutcome TryCreateSpritePrefab(Scene scene, UniAgentUnityAction action, StringBuilder log)
+        {
+            GameObject gameObject = null;
+            try
+            {
+                if (!TryResolveSpriteAssetPath(action.spritePath, out var spriteAssetPath, out var spriteError))
+                {
+                    log.AppendLine($"- Failed to create sprite prefab: {spriteError}");
+                    return ActionOutcome.Failed;
+                }
+
+                if (!TryLoadSprite(spriteAssetPath, out var sprite, out var loadError))
+                {
+                    log.AppendLine($"- Failed to create sprite prefab: {loadError}");
+                    return ActionOutcome.Failed;
+                }
+
+                var objectName = string.IsNullOrWhiteSpace(action.objectName)
+                    ? (!string.IsNullOrWhiteSpace(sprite.name) ? sprite.name : "UniAgentSpritePrefab")
+                    : action.objectName.Trim();
+
+                gameObject = new GameObject(objectName);
+                SceneManager.MoveGameObjectToScene(gameObject, scene);
+                ApplyTransformOptions(gameObject.transform, action);
+
+                var renderer = gameObject.AddComponent<SpriteRenderer>();
+                renderer.sprite = sprite;
+                if (!string.IsNullOrWhiteSpace(action.sortingLayer))
+                {
+                    renderer.sortingLayerName = action.sortingLayer.Trim();
+                }
+
+                renderer.sortingOrder = action.orderInLayer;
+
+                if (!TryAddConfiguredComponents(gameObject, action, log, "create sprite prefab"))
+                {
+                    return ActionOutcome.Failed;
+                }
+
+                var requestedFolder = string.IsNullOrWhiteSpace(action.outputFolder)
+                    ? DefaultGeneratedPrefabFolder
+                    : action.outputFolder.Trim();
+                if (!TryResolveWritableAssetFolderPath(requestedFolder, out var outputFolder, out var folderError))
+                {
+                    log.AppendLine($"- Failed to create sprite prefab: {folderError}");
+                    return ActionOutcome.Failed;
+                }
+
+                var baseNameRaw = !string.IsNullOrWhiteSpace(action.prefabName)
+                    ? action.prefabName.Trim()
+                    : objectName;
+                var baseName = SanitizeAssetName(baseNameRaw, "SpritePrefab");
+                var targetPath = $"{outputFolder}/{baseName}.prefab";
+                if (AssetDatabase.LoadAssetAtPath<GameObject>(targetPath) != null && !action.overwriteExisting)
+                {
+                    targetPath = GetUniqueAssetFilePath(outputFolder, baseName, ".prefab");
+                }
+
+                var prefab = PrefabUtility.SaveAsPrefabAsset(gameObject, targetPath, out var success);
+                if (!success || prefab == null)
+                {
+                    log.AppendLine($"- Failed to create sprite prefab: Unity could not write `{targetPath}`.");
+                    return ActionOutcome.Failed;
+                }
+
+                AssetDatabase.ImportAsset(targetPath, ImportAssetOptions.ForceUpdate);
+                log.AppendLine($"- Created sprite prefab `{targetPath}` from `{spriteAssetPath}`.");
+                return ActionOutcome.Applied;
+            }
+            finally
+            {
+                if (gameObject != null)
+                {
+                    UnityEngine.Object.DestroyImmediate(gameObject);
+                }
+            }
+        }
+
+        private static bool TryAddConfiguredComponents(GameObject gameObject, UniAgentUnityAction action, StringBuilder log, string context)
+        {
+            if (gameObject == null || action == null)
+            {
+                return true;
+            }
+
+            var componentNames = new List<string>();
+            if (!string.IsNullOrWhiteSpace(action.component))
+            {
+                componentNames.Add(action.component.Trim());
+            }
+
+            if (action.components != null)
+            {
+                for (var i = 0; i < action.components.Length; i++)
+                {
+                    if (!string.IsNullOrWhiteSpace(action.components[i]))
+                    {
+                        componentNames.Add(action.components[i].Trim());
+                    }
+                }
+            }
+
+            for (var i = 0; i < componentNames.Count; i++)
+            {
+                var componentType = ResolveComponentType(componentNames[i]);
+                if (componentType == null)
+                {
+                    log.AppendLine($"- Failed to {context}: component type not found `{componentNames[i]}`.");
+                    return false;
+                }
+
+                if (gameObject.GetComponent(componentType) != null)
+                {
+                    continue;
+                }
+
+                var added = gameObject.AddComponent(componentType);
+                if (added == null)
+                {
+                    log.AppendLine($"- Failed to {context}: Unity could not add `{componentType.Name}`.");
+                    return false;
+                }
+            }
+
+            return true;
         }
 
         private static bool TryResolveSpriteAssetPath(string spritePathOrFile, out string spriteAssetPath, out string error)
@@ -1381,6 +1763,40 @@ namespace Achieve.UniAgent.Editor
         }
     }
 
+    [InitializeOnLoad]
+    internal static class UniAgentDeferredUnityActionRunner
+    {
+        static UniAgentDeferredUnityActionRunner()
+        {
+            ScheduleApply();
+        }
+
+        private static void ScheduleApply()
+        {
+            EditorApplication.delayCall -= ApplyIfReady;
+            EditorApplication.delayCall += ApplyIfReady;
+        }
+
+        private static void ApplyIfReady()
+        {
+            if (!UniAgentUnityEditorHelper.HasDeferredActionRequest())
+            {
+                return;
+            }
+
+            if (EditorApplication.isCompiling || EditorApplication.isUpdating || EditorApplication.isPlayingOrWillChangePlaymode)
+            {
+                ScheduleApply();
+                return;
+            }
+
+            if (UniAgentUnityEditorHelper.TryApplyDeferredActions(out var summary) && !string.IsNullOrWhiteSpace(summary))
+            {
+                Debug.Log(summary);
+            }
+        }
+    }
+
     [Serializable]
     internal sealed class UniAgentUnityActionRequest
     {
@@ -1388,6 +1804,8 @@ namespace Achieve.UniAgent.Editor
         public string scene;
         /// <summary>수정 적용 후 씬 저장 여부입니다.</summary>
         public bool saveScene = true;
+        /// <summary>새 MonoBehaviour 컴파일 이후에 액션을 적용해야 하는지 여부입니다.</summary>
+        public bool deferUntilScriptsReloaded;
         /// <summary>순서대로 적용할 액션 목록입니다.</summary>
         public UniAgentUnityAction[] actions;
     }
@@ -1395,18 +1813,22 @@ namespace Achieve.UniAgent.Editor
     [Serializable]
     internal sealed class UniAgentUnityAction
     {
-        /// <summary>액션 타입(AddComponent, RemoveComponent, CreateSpriteObject, SavePrefabFromTarget, CreateCsvDataTable)입니다.</summary>
+        /// <summary>액션 타입(AddComponent, RemoveComponent, CreatePrimitiveObject, CreatePrimitivePrefab, CreateSpriteObject, CreateSpritePrefab, SavePrefabFromTarget, CreateCsvDataTable)입니다.</summary>
         public string type;
         /// <summary>액션에 따라 사용할 대상 오브젝트 이름 또는 계층 경로입니다.</summary>
         public string target;
         /// <summary>컴포넌트 추가/제거 시 사용할 컴포넌트 타입명입니다.</summary>
         public string component;
+        /// <summary>프리팹 생성 시 함께 추가할 컴포넌트 타입명 목록입니다.</summary>
+        public string[] components;
         /// <summary>대상 탐색 시 비활성 오브젝트 포함 여부입니다.</summary>
         public bool includeInactive = true;
 
-        // Sprite object creation.
-        /// <summary>생성할 스프라이트 오브젝트 이름입니다.</summary>
+        // Primitive/sprite object creation.
+        /// <summary>생성할 오브젝트 이름입니다.</summary>
         public string objectName;
+        /// <summary>생성할 Unity primitive 타입(Cube, Sphere, Capsule, Cylinder, Plane, Quad)입니다.</summary>
+        public string primitiveType;
         /// <summary>프로젝트 상대 스프라이트 에셋 경로입니다.</summary>
         public string spritePath;
         /// <summary>생성 후 로컬 위치를 강제로 설정할지 여부입니다.</summary>

@@ -26,8 +26,15 @@ namespace Achieve.UniAgent.Editor
             sb.AppendLine("Unity Editor Agent bridge context:");
             sb.AppendLine($"- Project root: {GetProjectRootPath()}");
             sb.AppendLine($"- Unity action bridge file: {GetUnityActionFilePath()}");
-            sb.AppendLine("- For scene/object/component changes, write JSON actions to that file (schema in Assets/Editor/UniAgentUnityEditorHelper.cs).");
-            sb.AppendLine("- Unity action types: AddComponent, RemoveComponent, CreateSpriteObject, SavePrefabFromTarget, CreateCsvDataTable.");
+            sb.AppendLine("- For scene/object/component/prefab changes, prefer writing JSON actions to that file (schema in Assets/Editor/UniAgentUnityEditorHelper.cs).");
+            sb.AppendLine("- Unity action types: AddComponent, RemoveComponent, CreatePrimitiveObject, CreatePrimitivePrefab, CreateSpriteObject, CreateSpritePrefab, SavePrefabFromTarget, CreateCsvDataTable.");
+            sb.AppendLine("- Do not create one-off Editor scripts for tasks covered by Unity action types; use the bridge action instead.");
+            sb.AppendLine("- Never create temporary Editor scripts that run via InitializeOnLoad, InitializeOnLoadMethod, or DidReloadScripts for one-shot work.");
+            sb.AppendLine("- For primitive prefab requests (cube/sphere/capsule/cylinder/plane/quad), use CreatePrimitivePrefab.");
+            sb.AppendLine("- For sprite/PNG prefab requests, use CreateSpritePrefab.");
+            sb.AppendLine("- If you create a new MonoBehaviour script and then need to attach it to a generated prefab, write the bridge request with deferUntilScriptsReloaded=true so Unity applies it after compilation.");
+            sb.AppendLine("- Runtime MonoBehaviour scripts must be created outside Assets/Editor, for example under Assets/Scripts or Assets/Runtime.");
+            sb.AppendLine("- For prefab-only bridge requests, set saveScene to false unless a scene object should remain changed.");
             sb.AppendLine("- For image-to-scene: use CreateSpriteObject with spritePath.");
             sb.AppendLine("- Data-first policy: prefer CSV data tables for new gameplay/config data.");
             sb.AppendLine("- CSV table path rule: Assets/Resources/DataTables/*.csv");
@@ -101,6 +108,14 @@ namespace Achieve.UniAgent.Editor
         public static string GetUnityActionFilePath()
         {
             return Path.Combine(GetProjectRootPath(), "Library", UniAgentCliConstants.UnityActionFileName);
+        }
+
+        /// <summary>
+        /// 스크립트 리로드 이후 적용할 Unity Action Bridge JSON 파일의 절대 경로를 반환합니다.
+        /// </summary>
+        public static string GetDeferredUnityActionFilePath()
+        {
+            return Path.Combine(GetProjectRootPath(), "Library", UniAgentCliConstants.DeferredUnityActionFileName);
         }
 
         private static void AppendOptimizationPolicy(StringBuilder sb)

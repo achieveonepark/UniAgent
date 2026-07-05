@@ -63,6 +63,7 @@ namespace Achieve.UniAgent.Editor
         public string ProjectCodexHome;
         /// <summary>실행 시 full-auto 모드 사용 여부입니다.</summary>
         public bool FullAuto;
+        public bool AutoAcceptEdits;
         /// <summary>실행 타임아웃(ms)입니다. 0 이하면 무제한입니다.</summary>
         public int TimeoutMs;
     }

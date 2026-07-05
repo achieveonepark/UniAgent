@@ -26,6 +26,7 @@ namespace Achieve.UniAgent.Editor
         private static readonly Regex JsonStatusRegex = new Regex("\"status\"\\s*:\\s*\"([^\"]+)\"", RegexOptions.Compiled);
         private static readonly Regex JsonTitleRegex = new Regex("\"title\"\\s*:\\s*\"([^\"]+)\"", RegexOptions.Compiled);
         private static readonly Regex JsonToolNameRegex = new Regex("\"tool_name\"\\s*:\\s*\"([^\"]+)\"", RegexOptions.Compiled);
+        private static readonly Regex JsonNameRegex = new Regex("\"name\"\\s*:\\s*\"([^\"]+)\"", RegexOptions.Compiled);
         private static readonly Regex JsonTextRegex = new Regex("\"text\"\\s*:\\s*\"([^\"]+)\"", RegexOptions.Compiled);
         private static readonly Regex JsonDeltaRegex = new Regex("\"delta\"\\s*:\\s*\"([^\"]+)\"", RegexOptions.Compiled);
         private static readonly Regex JsonContentRegex = new Regex("\"content\"\\s*:\\s*\"([^\"]+)\"", RegexOptions.Compiled);
@@ -42,6 +43,7 @@ namespace Achieve.UniAgent.Editor
         private readonly bool _useProjectCodexHome;
         private readonly string _projectCodexHome;
         private readonly bool _fullAuto;
+        private readonly bool _autoAcceptEdits;
         private readonly string _model;
         private readonly string _modelReasoningEffort;
         private readonly int _execTimeoutMs;
@@ -56,6 +58,7 @@ namespace Achieve.UniAgent.Editor
             bool useProjectCodexHome,
             string projectCodexHome,
             bool fullAuto,
+            bool autoAcceptEdits = false,
             string model = null,
             string modelReasoningEffort = null,
             int execTimeoutMs = UniAgentCliConstants.DefaultExecTimeoutMs,
@@ -70,6 +73,7 @@ namespace Achieve.UniAgent.Editor
             _useProjectCodexHome = useProjectCodexHome;
             _projectCodexHome = projectCodexHome;
             _fullAuto = fullAuto;
+            _autoAcceptEdits = autoAcceptEdits;
             _model = string.IsNullOrWhiteSpace(model) ? string.Empty : model.Trim();
             _modelReasoningEffort = string.IsNullOrWhiteSpace(modelReasoningEffort) ? string.Empty : modelReasoningEffort.Trim();
             // Keep non-positive values as "no timeout".
@@ -151,6 +155,7 @@ namespace Achieve.UniAgent.Editor
                 UseProjectCodexHome = _useProjectCodexHome,
                 ProjectCodexHome = _projectCodexHome,
                 FullAuto = _fullAuto,
+                AutoAcceptEdits = _autoAcceptEdits,
                 TimeoutMs = _execTimeoutMs
             };
 
@@ -787,7 +792,15 @@ namespace Achieve.UniAgent.Editor
         {
             var sb = new StringBuilder();
             sb.Append("--print ");
-            sb.Append("--output-format json ");
+            sb.Append("--verbose ");
+            sb.Append("--output-format stream-json ");
+            sb.Append("--include-partial-messages ");
+            sb.Append("--setting-sources project,local ");
+
+            if (request.FullAuto && request.AutoAcceptEdits)
+            {
+                sb.Append("--permission-mode acceptEdits ");
+            }
 
             if (!string.IsNullOrWhiteSpace(request.Model))
             {
@@ -929,6 +942,12 @@ namespace Achieve.UniAgent.Editor
                 return FormatProgressText(trimmed);
             }
 
+            var claudeProgress = TryExtractClaudeProgressMessage(trimmed);
+            if (!string.IsNullOrWhiteSpace(claudeProgress))
+            {
+                return claudeProgress;
+            }
+
             // Prefer richer textual payloads over generic event/status labels.
             var summaryText = FormatProgressText(TryExtractJsonValue(trimmed, JsonSummaryTextRegex));
             if (!string.IsNullOrWhiteSpace(summaryText))
@@ -988,6 +1007,85 @@ namespace Achieve.UniAgent.Editor
             if (!string.IsNullOrWhiteSpace(type))
             {
                 return type;
+            }
+
+            return string.Empty;
+        }
+
+        private static string TryExtractClaudeProgressMessage(string jsonLine)
+        {
+            if (string.IsNullOrWhiteSpace(jsonLine))
+            {
+                return string.Empty;
+            }
+
+            if (jsonLine.IndexOf("\"type\":\"system\"", StringComparison.Ordinal) >= 0)
+            {
+                if (jsonLine.IndexOf("\"subtype\":\"init\"", StringComparison.Ordinal) >= 0)
+                {
+                    return "Initialized agent session";
+                }
+
+                if (jsonLine.IndexOf("\"status\":\"requesting\"", StringComparison.Ordinal) >= 0)
+                {
+                    return "Contacting model API";
+                }
+            }
+
+            if (jsonLine.IndexOf("\"type\":\"rate_limit_event\"", StringComparison.Ordinal) >= 0)
+            {
+                return "Checked rate limit";
+            }
+
+            if (jsonLine.IndexOf("\"type\":\"assistant\"", StringComparison.Ordinal) >= 0)
+            {
+                return "Received assistant answer";
+            }
+
+            if (jsonLine.IndexOf("\"type\":\"result\"", StringComparison.Ordinal) >= 0)
+            {
+                return "Received final response";
+            }
+
+            if (jsonLine.IndexOf("\"type\":\"stream_event\"", StringComparison.Ordinal) < 0)
+            {
+                return string.Empty;
+            }
+
+            if (jsonLine.IndexOf("\"type\":\"message_start\"", StringComparison.Ordinal) >= 0)
+            {
+                return "Assistant started responding";
+            }
+
+            if (jsonLine.IndexOf("\"type\":\"content_block_start\"", StringComparison.Ordinal) >= 0)
+            {
+                if (jsonLine.IndexOf("\"type\":\"tool_use\"", StringComparison.Ordinal) >= 0)
+                {
+                    var toolName = FormatProgressText(TryExtractJsonValue(jsonLine, JsonNameRegex));
+                    return string.IsNullOrWhiteSpace(toolName) ? "Running tool" : $"Running {toolName}";
+                }
+
+                return "Drafting response";
+            }
+
+            if (jsonLine.IndexOf("\"type\":\"content_block_delta\"", StringComparison.Ordinal) >= 0)
+            {
+                return "Drafting response";
+            }
+
+            if (jsonLine.IndexOf("\"type\":\"input_json_delta\"", StringComparison.Ordinal) >= 0)
+            {
+                return "Preparing tool input";
+            }
+
+            if (jsonLine.IndexOf("\"type\":\"message_delta\"", StringComparison.Ordinal) >= 0)
+            {
+                return "Wrapping up response";
+            }
+
+            if (jsonLine.IndexOf("\"type\":\"message_stop\"", StringComparison.Ordinal) >= 0)
+            {
+                return "Finalizing response";
             }
 
             return string.Empty;
@@ -1119,6 +1217,7 @@ namespace Achieve.UniAgent.Editor
         {
             psi.EnvironmentVariables["LANG"] = "en_US.UTF-8";
             psi.EnvironmentVariables["LC_ALL"] = "en_US.UTF-8";
+            ApplyWindowsEnvironmentOverrides(psi);
             ApplyShellProxyEnvironment(psi);
             ApplyWindowsCommandShellWrapper(psi);
 
@@ -1174,6 +1273,43 @@ namespace Achieve.UniAgent.Editor
         /// 이걸 안 하면 터미널에서는 되는데(프록시 경유) Unity 안에서 실행한 codex/claude만 API 연결이
         /// 거부되는(Connection refused) 상황이 생길 수 있다.
         /// </summary>
+        private static void ApplyWindowsEnvironmentOverrides(ProcessStartInfo psi)
+        {
+            if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows) || psi == null)
+            {
+                return;
+            }
+
+            foreach (var key in ProxyEnvironmentKeys)
+            {
+                ApplyWindowsEnvironmentOverride(psi, key);
+            }
+        }
+
+        private static void ApplyWindowsEnvironmentOverride(ProcessStartInfo psi, string key)
+        {
+            if (psi == null || string.IsNullOrWhiteSpace(key))
+            {
+                return;
+            }
+
+            if (psi.EnvironmentVariables.ContainsKey(key) && !string.IsNullOrWhiteSpace(psi.EnvironmentVariables[key]))
+            {
+                return;
+            }
+
+            var value = Environment.GetEnvironmentVariable(key, EnvironmentVariableTarget.User);
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                value = Environment.GetEnvironmentVariable(key, EnvironmentVariableTarget.Machine);
+            }
+
+            if (!string.IsNullOrWhiteSpace(value))
+            {
+                psi.EnvironmentVariables[key] = value;
+            }
+        }
+
         private static void ApplyShellProxyEnvironment(ProcessStartInfo psi)
         {
             if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))

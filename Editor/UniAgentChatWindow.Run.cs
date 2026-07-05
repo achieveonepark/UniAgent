@@ -47,6 +47,8 @@ namespace Achieve.UniAgent.Editor
 
             HideMentionSuggestions();
             HideNewSessionPopup();
+            _activeProgressLanguage = ResolveActiveProgressLanguage(text);
+            _cSharpFilesBeforeRun = SnapshotProjectCSharpFiles();
             _inputField.value = string.Empty;
             AddMessage(ChatRole.User, text);
             StartPendingAssistantMessage();
@@ -54,7 +56,7 @@ namespace Achieve.UniAgent.Editor
             var diffPreviewThisTurn = _chatMode == ChatMode.Build && _buildDiffPreviewMode;
             var prompt = diffPreviewThisTurn ? BuildDiffPreviewPrompt(text) : BuildPrompt(text);
             var agentName = GetProviderDisplayName();
-            SetBusy(true, diffPreviewThisTurn ? $"{agentName} is generating diff preview..." : $"{agentName} is thinking...");
+            SetBusy(true, BuildBusyStatusText(agentName, diffPreviewThisTurn));
             IncrementActiveRuns();
 
             RunThroughUniAgentClient(prompt, diffPreviewThisTurn ? false : (bool?)null).ContinueWith(task =>
@@ -160,6 +162,7 @@ namespace Achieve.UniAgent.Editor
             }
 
             AccumulateSessionTokens(result);
+            QuarantineNewAutoRunEditorScripts();
             if (!diffPreviewTurn)
             {
                 ApplyPendingUnityActionsFromBridge();
@@ -676,6 +679,172 @@ namespace Achieve.UniAgent.Editor
             {
                 AddMessage(ChatRole.System, summary);
             }
+
+            if (UniAgentUnityEditorHelper.HasDeferredActionRequest())
+            {
+                EditorApplication.delayCall += RefreshScriptsManually;
+            }
+        }
+
+        private static HashSet<string> SnapshotProjectCSharpFiles()
+        {
+            var snapshot = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var assetsPath = Path.Combine(UniAgentChatHelper.GetProjectRootPath(), "Assets");
+            if (!Directory.Exists(assetsPath))
+            {
+                return snapshot;
+            }
+
+            try
+            {
+                foreach (var path in Directory.EnumerateFiles(assetsPath, "*.cs", SearchOption.AllDirectories))
+                {
+                    snapshot.Add(NormalizeFullPath(path));
+                }
+            }
+            catch
+            {
+                // Best-effort guard only; failing to snapshot should not block the user request.
+            }
+
+            return snapshot;
+        }
+
+        private void QuarantineNewAutoRunEditorScripts()
+        {
+            var before = _cSharpFilesBeforeRun;
+            _cSharpFilesBeforeRun = null;
+            if (before == null)
+            {
+                return;
+            }
+
+            var current = SnapshotProjectCSharpFiles();
+            if (current.Count == 0)
+            {
+                return;
+            }
+
+            var quarantined = new List<string>();
+            foreach (var path in current)
+            {
+                if (before.Contains(path) || !IsEditorScriptPath(path) || !LooksLikeAutoRunEditorScript(path))
+                {
+                    continue;
+                }
+
+                if (TryQuarantineScript(path, out var quarantinePath, out var error))
+                {
+                    quarantined.Add($"{ToProjectRelativePath(path)} -> {ToProjectRelativePath(quarantinePath)}");
+                    continue;
+                }
+
+                AddMessage(ChatRole.Error, $"Auto-run Editor script quarantine failed for `{ToProjectRelativePath(path)}`: {error}");
+            }
+
+            if (quarantined.Count == 0)
+            {
+                return;
+            }
+
+            AddMessage(
+                ChatRole.System,
+                "Blocked newly generated auto-run Editor script(s) before script refresh:\n- "
+                + string.Join("\n- ", quarantined)
+                + "\nUse Unity action bridge JSON for one-shot editor work instead.");
+            SetStatus("Blocked auto-run Editor script");
+        }
+
+        private static bool IsEditorScriptPath(string fullPath)
+        {
+            var normalized = NormalizeFullPath(fullPath).Replace('\\', '/');
+            return normalized.IndexOf("/Assets/", StringComparison.OrdinalIgnoreCase) >= 0
+                && normalized.IndexOf("/Editor/", StringComparison.OrdinalIgnoreCase) >= 0;
+        }
+
+        private static bool LooksLikeAutoRunEditorScript(string fullPath)
+        {
+            string text;
+            try
+            {
+                text = File.ReadAllText(fullPath);
+            }
+            catch
+            {
+                return false;
+            }
+
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                return false;
+            }
+
+            return text.IndexOf("InitializeOnLoad", StringComparison.Ordinal) >= 0
+                || text.IndexOf("InitializeOnLoadMethod", StringComparison.Ordinal) >= 0
+                || text.IndexOf("DidReloadScripts", StringComparison.Ordinal) >= 0;
+        }
+
+        private static bool TryQuarantineScript(string fullPath, out string quarantinePath, out string error)
+        {
+            quarantinePath = string.Empty;
+            error = string.Empty;
+            try
+            {
+                quarantinePath = GetAvailableQuarantinePath(fullPath);
+                File.Move(fullPath, quarantinePath);
+
+                var metaPath = fullPath + ".meta";
+                if (File.Exists(metaPath))
+                {
+                    File.Move(metaPath, quarantinePath + ".meta");
+                }
+
+                return true;
+            }
+            catch (Exception ex)
+            {
+                error = ex.Message;
+                return false;
+            }
+        }
+
+        private static string GetAvailableQuarantinePath(string fullPath)
+        {
+            var candidate = fullPath + ".uniagent-blocked";
+            if (!File.Exists(candidate))
+            {
+                return candidate;
+            }
+
+            for (var i = 1; i <= 9999; i++)
+            {
+                candidate = $"{fullPath}.uniagent-blocked-{i:000}";
+                if (!File.Exists(candidate))
+                {
+                    return candidate;
+                }
+            }
+
+            return $"{fullPath}.uniagent-blocked-{DateTime.Now:yyyyMMddHHmmss}";
+        }
+
+        private static string NormalizeFullPath(string path)
+        {
+            return string.IsNullOrWhiteSpace(path) ? string.Empty : Path.GetFullPath(path).Replace('\\', '/');
+        }
+
+        private static string ToProjectRelativePath(string fullPath)
+        {
+            var projectRoot = NormalizeFullPath(UniAgentChatHelper.GetProjectRootPath());
+            if (!projectRoot.EndsWith("/", StringComparison.Ordinal))
+            {
+                projectRoot += "/";
+            }
+
+            var normalized = NormalizeFullPath(fullPath);
+            return normalized.StartsWith(projectRoot, StringComparison.OrdinalIgnoreCase)
+                ? normalized.Substring(projectRoot.Length)
+                : normalized;
         }
 
         // -------------------------

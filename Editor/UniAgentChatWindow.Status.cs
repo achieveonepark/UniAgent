@@ -189,6 +189,9 @@ namespace Achieve.UniAgent.Editor
             _disableSceneReloadOnPlay = EditorPrefs.GetBool(prefix + "DisableSceneReload", false);
             _manualRefreshMode = EditorPrefs.GetBool(prefix + "ManualRefreshMode", true);
             _buildDiffPreviewMode = EditorPrefs.GetBool(prefix + "BuildDiffPreviewMode", false);
+            _claudeAutoAcceptEdits = EditorPrefs.GetBool(prefix + "ClaudeAutoAcceptEdits", false);
+            _progressLanguage = NormalizeOption(EditorPrefs.GetString(prefix + "ProgressLanguage", DefaultProgressLanguage), ProgressLanguageOptions, DefaultProgressLanguage);
+            _activeProgressLanguage = ResolveActiveProgressLanguage(string.Empty);
             _sessionId = EditorPrefs.GetString(prefix + "SessionId", string.Empty);
             _activeChatSessionId = EditorPrefs.GetString(prefix + "ActiveChatSessionId", string.Empty);
             var modeText = EditorPrefs.GetString(prefix + "ChatMode", ChatMode.Build.ToString());
@@ -223,6 +226,8 @@ namespace Achieve.UniAgent.Editor
             EditorPrefs.SetBool(prefix + "DisableSceneReload", _disableSceneReloadOnPlay);
             EditorPrefs.SetBool(prefix + "ManualRefreshMode", _manualRefreshMode);
             EditorPrefs.SetBool(prefix + "BuildDiffPreviewMode", _buildDiffPreviewMode);
+            EditorPrefs.SetBool(prefix + "ClaudeAutoAcceptEdits", _claudeAutoAcceptEdits);
+            EditorPrefs.SetString(prefix + "ProgressLanguage", NormalizeOption(_progressLanguage, ProgressLanguageOptions, DefaultProgressLanguage));
             EditorPrefs.SetString(prefix + "SessionId", _sessionId ?? string.Empty);
             EditorPrefs.SetString(prefix + "ActiveChatSessionId", _activeChatSessionId ?? string.Empty);
             EditorPrefs.SetString(prefix + "ChatMode", _chatMode.ToString());

@@ -100,6 +100,33 @@ namespace Achieve.UniAgent.Editor
             providerRow.Add(providerPopup);
             panel.Add(providerRow);
 
+            var progressLanguageRow = new VisualElement();
+            progressLanguageRow.style.flexDirection = FlexDirection.Row;
+            progressLanguageRow.style.alignItems = Align.Center;
+            progressLanguageRow.style.marginBottom = 4f;
+
+            var progressLanguageLabel = new Label("Progress Lang");
+            ApplyPreferredFont(progressLanguageLabel);
+            progressLanguageLabel.style.color = UiTextSecondary;
+            progressLanguageLabel.style.width = 90f;
+            progressLanguageLabel.style.minWidth = 90f;
+            progressLanguageLabel.style.marginRight = 6f;
+            progressLanguageRow.Add(progressLanguageLabel);
+
+            var progressLanguageIndex = GetOptionIndex(_progressLanguage, ProgressLanguageOptions, DefaultProgressLanguage);
+            var progressLanguagePopup = new PopupField<string>(ProgressLanguageOptions, progressLanguageIndex);
+            progressLanguagePopup.style.flexGrow = 1f;
+            progressLanguagePopup.tooltip = "Controls the temporary thinking/progress text. Auto follows the current prompt language.";
+            ApplyPopupFieldStyle(progressLanguagePopup, 24f);
+            progressLanguagePopup.RegisterValueChangedCallback(evt =>
+            {
+                _progressLanguage = NormalizeOption(evt.newValue, ProgressLanguageOptions, DefaultProgressLanguage);
+                _activeProgressLanguage = ResolveActiveProgressLanguage(string.Empty);
+                SavePrefs();
+            });
+            progressLanguageRow.Add(progressLanguagePopup);
+            panel.Add(progressLanguageRow);
+
             // ── Codex CLI 경로(수동 재정의) ────────────────────────────────
             _codexCliPathRow = BuildCliPathRow(
                 "Codex Path",
@@ -173,6 +200,31 @@ namespace Achieve.UniAgent.Editor
             });
             _claudeModelRow.Add(claudeModelPopup);
             panel.Add(_claudeModelRow);
+
+            _claudeAutoAcceptEditsRow = new VisualElement();
+            _claudeAutoAcceptEditsRow.style.flexDirection = FlexDirection.Row;
+            _claudeAutoAcceptEditsRow.style.alignItems = Align.Center;
+            _claudeAutoAcceptEditsRow.style.marginBottom = 4f;
+
+            var claudeEditLabel = new Label("File Edits");
+            ApplyPreferredFont(claudeEditLabel);
+            claudeEditLabel.style.color = UiTextSecondary;
+            claudeEditLabel.style.width = 90f;
+            claudeEditLabel.style.minWidth = 90f;
+            claudeEditLabel.style.marginRight = 6f;
+            _claudeAutoAcceptEditsRow.Add(claudeEditLabel);
+
+            var claudeAutoAcceptToggle = new Toggle("Auto-accept Claude file edits") { value = _claudeAutoAcceptEdits };
+            claudeAutoAcceptToggle.style.flexGrow = 1f;
+            claudeAutoAcceptToggle.tooltip = "When enabled, Claude Code runs with `--permission-mode acceptEdits` so file edit prompts do not block this non-interactive Unity chat. Shell/tool permissions are not fully bypassed.";
+            ApplyPreferredFont(claudeAutoAcceptToggle);
+            claudeAutoAcceptToggle.RegisterValueChangedCallback(evt =>
+            {
+                _claudeAutoAcceptEdits = evt.newValue;
+                SavePrefs();
+            });
+            _claudeAutoAcceptEditsRow.Add(claudeAutoAcceptToggle);
+            panel.Add(_claudeAutoAcceptEditsRow);
 
             // ── Reasoning (Codex 전용) ────────────────────────────────────
             _reasoningRow = new VisualElement();
@@ -396,6 +448,11 @@ namespace Achieve.UniAgent.Editor
             if (_reasoningRow != null)
             {
                 _reasoningRow.style.display = isClaudeProvider ? DisplayStyle.None : DisplayStyle.Flex;
+            }
+
+            if (_claudeAutoAcceptEditsRow != null)
+            {
+                _claudeAutoAcceptEditsRow.style.display = isClaudeProvider ? DisplayStyle.Flex : DisplayStyle.None;
             }
 
             if (_codexCliPathRow != null)
